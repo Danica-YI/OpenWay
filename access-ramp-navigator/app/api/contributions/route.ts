@@ -2,8 +2,17 @@ import { desc, eq } from "drizzle-orm";
 import { getD1, getDb } from "../../../db";
 import { accessibilityContributions } from "../../../db/schema";
 
-const BUILDINGS = new Set(["library", "student-centre", "innovation", "science", "theatre"]);
 const CATEGORIES = new Set(["Ramp", "Accessible entrance", "Accessible toilet", "Lift", "Parking", "Door", "Other"]);
+
+/**
+ * Contributions are keyed by OpenStreetMap id, so any building on the map can
+ * be reported on — not just a fixed list we shipped.
+ */
+const BUILDING_ID = /^(way|relation|node)\/\d{1,15}$/;
+
+function isBuildingId(value: string): boolean {
+  return BUILDING_ID.test(value);
+}
 
 async function ensureSchema() {
   const d1 = getD1();
@@ -18,7 +27,7 @@ async function ensureSchema() {
       status TEXT NOT NULL DEFAULT 'pending_review',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
-    d1.prepare("CREATE INDEX IF NOT EXISTS contribution_building_idx ON accessibility_contributions (building_id, created_at DESC)"),
+    d1.prepare("CREATE INDEX IF NOT EXISTS contribution_building_idx ON accessibility_contributions (building_id, created_at)"),
   ]);
 }
 
@@ -39,7 +48,7 @@ function contributorName(request: Request, supplied: unknown) {
 export async function GET(request: Request) {
   try {
     const buildingId = new URL(request.url).searchParams.get("buildingId") ?? "";
-    if (!BUILDINGS.has(buildingId)) return Response.json({ error: "Unknown building" }, { status: 400 });
+    if (!isBuildingId(buildingId)) return Response.json({ error: "Unknown building" }, { status: 400 });
     await ensureSchema();
     const rows = await getDb().select().from(accessibilityContributions)
       .where(eq(accessibilityContributions.buildingId, buildingId))
@@ -58,7 +67,7 @@ export async function POST(request: Request) {
     const category = cleanText(payload.category, 40);
     const location = cleanText(payload.location, 140);
     const details = cleanText(payload.details, 800);
-    if (!BUILDINGS.has(buildingId)) return Response.json({ error: "Choose a valid building" }, { status: 400 });
+    if (!isBuildingId(buildingId)) return Response.json({ error: "Choose a building on the map first" }, { status: 400 });
     if (!CATEGORIES.has(category)) return Response.json({ error: "Choose a valid accessibility feature" }, { status: 400 });
     if (location.length < 3 || details.length < 10) return Response.json({ error: "Add an exact location and useful detail" }, { status: 400 });
 

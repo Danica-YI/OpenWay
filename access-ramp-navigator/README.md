@@ -1,64 +1,110 @@
 # AccessRamp Navigator
 
-A detailed building-accessibility directory and step-free navigation prototype.
+Detailed building accessibility information for every building on the map — not
+just the handful someone has surveyed.
 
-## Features
+Click any building and you get one of four things, always clearly labelled:
 
-- Interactive OpenStreetMap with clickable building footprints
-- Building accessibility profiles
-- Exact accessible entrance side and level
-- Ramp rise, length, width, gradient, surface and handrail details
-- Accessible toilet floor, room and transfer information
-- Lift, accessible parking and other facility details
-- Path-following step-free routes
-- Search and accessibility filters
-- Persistent community accessibility reports
-- Clear separation of verified and unverified information
-- Responsive desktop and mobile interface
+| Map colour | Meaning |
+| --- | --- |
+| **Teal** | Surveyed profile — ramp gradients, toilet room numbers, parking bays |
+| **Blue** | Mapped in OpenStreetMap — entrances, wheelchair tags, lifts |
+| **Amber** | Community reports only — unverified reports from users |
+| **Grey, dashed** | No accessibility information yet — with a prompt to add the first detail |
+
+That last state is the point of the product: an unmapped building is not a dead
+end, it is the gap we ask people to fill.
 
 ## Requirements
 
-- Node.js 22.13 or newer
+- **Node.js 22.13 or newer** — check with `node -v`
 - npm
-- Internet access for OpenStreetMap tiles
+- An internet connection (OpenStreetMap tiles and the Overpass API)
 
-## Run locally
+If you use `nvm`, run `nvm use` — the version is pinned in `.nvmrc`.
 
-1. Extract the ZIP.
-2. Open a terminal in the `access-ramp-navigator` folder.
-3. Install dependencies:
+## Run it
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+npm run dev
+```
 
-4. Start the development server:
+Open the address printed in the terminal, normally <http://localhost:5173>.
+The terminal also prints a Network address you can open on your phone, which is
+worth doing since the layout is fully responsive.
 
-   ```bash
-   npm run dev
-   ```
+That is the whole setup. There is no API key, no `.env` file, and no database to
+provision — the local Cloudflare D1 database is created automatically under
+`.wrangler/` the first time a contribution is saved.
 
-5. Open the address shown in the terminal, normally:
+## Scripts
 
-   ```text
-   http://localhost:5173
-   ```
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Development server with hot reload |
+| `npm run build` | Production build |
+| `npm start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript, no emit |
+| `npm run db:generate` | Regenerate Drizzle migrations after editing `db/schema.ts` |
 
-The local development environment uses a local Cloudflare D1 database. The
-contributions table is created automatically when the contribution API is first
-used.
+The `sites:*` scripts are the hosting platform's Linux-only deploy pipeline.
+Do not run them locally on macOS or Windows — they need `flock`, `sha256sum` and
+GNU `timeout`.
 
-## Important files
+## How it fits together
 
-- `app/page.tsx` — map, building profiles, navigation and contribution UI
-- `app/globals.css` — complete responsive visual design
-- `app/api/contributions/route.ts` — contribution API
-- `db/schema.ts` — persistent database schema
-- `drizzle/` — database migrations
-- `.openai/hosting.json` — local database binding configuration
+Data arrives in three layers, merged at render time and never blended together
+in the UI:
+
+1. **OpenStreetMap**, live, for any building in view.
+   `app/api/buildings/route.ts` proxies the Overpass API from the worker, so the
+   browser never calls it directly and one cached response serves everyone
+   looking at the same place. `lib/osm.ts` turns raw Overpass output into
+   building profiles — including **deriving which side each entrance is on** from
+   the bearing between the building centre and the entrance node.
+2. **Surveyed profiles** in `lib/curated.ts`, keyed by real OpenStreetMap id.
+   This is the layer that makes the product worth more than a map. In production
+   these come from a physical access audit; here they are illustrative sample
+   data attached to genuine QUT Gardens Point buildings.
+3. **Community reports** in Cloudflare D1, keyed by OpenStreetMap id so any
+   building on Earth can be reported on.
+
+### Important files
+
+| Path | Purpose |
+| --- | --- |
+| `app/page.tsx` | Map, sidebar, building profile drawer, contribution form |
+| `lib/osm.ts` | Overpass queries and OSM tag → accessibility profile logic |
+| `lib/curated.ts` | Surveyed profiles, keyed by OSM id |
+| `app/api/buildings/route.ts` | Cached OpenStreetMap proxy |
+| `app/api/contributions/route.ts` | Community report read/write |
+| `app/api/contributions/counts/route.ts` | Report counts, for map colouring |
+| `app/globals.css` | The complete responsive design |
+| `db/schema.ts` | Database schema |
+| `.openai/hosting.json` | Cloudflare binding names — **required for the dev server to start** |
+
+## Adding a surveyed building
+
+1. Find the building on <https://www.openstreetmap.org> and click it.
+2. Read its id from the URL, e.g. `.../way/361650701`.
+3. Add an entry keyed `"way/361650701"` to `CURATED` in `lib/curated.ts`.
+
+It turns teal on the map immediately. Nothing else needs changing — there is no
+second list to keep in sync.
+
+## Resetting the local database
+
+```bash
+rm -rf .wrangler
+```
+
+The table is recreated on the next contribution.
 
 ## Prototype notice
 
-The building records and routes are demonstration data. Real-world deployment
-requires surveyed and verified information, a moderation workflow and a
-wheelchair-accessible routing graph.
+Surveyed profiles are demonstration data. OpenStreetMap data is real but
+community-maintained and incomplete. Routes are direct lines, not step-free
+routed paths. A real deployment needs surveyed and verified information, a
+moderation workflow, and a wheelchair-accessible routing graph.
