@@ -112,6 +112,21 @@ function drawerSideWidth(map: LeafletMap): number {
   return isSidePanel ? drawerRect.width : 0;
 }
 
+/**
+ * The same problem in the other axis: on narrow viewports the drawer is a
+ * full-width sheet pinned to the bottom of the screen, so map framing that
+ * ignores it drops the selected building behind the sheet. Returns the sheet's
+ * height in px when it is laid out that way, else 0.
+ */
+function drawerBottomHeight(map: LeafletMap): number {
+  const drawerEl = document.querySelector(".building-drawer");
+  if (!drawerEl) return 0;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const drawerRect = drawerEl.getBoundingClientRect();
+  const isBottomSheet = drawerRect.width >= mapRect.width * 0.7;
+  return isBottomSheet ? Math.min(drawerRect.height, mapRect.height) : 0;
+}
+
 export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
@@ -232,6 +247,7 @@ export default function Home() {
   // --- map bootstrap -------------------------------------------------------
   useEffect(() => {
     let active = true;
+    let releaseObserver: (() => void) | null = null;
     const shapeStore = shapes.current;
     async function createMap() {
       if (!mapElement.current || mapInstance.current) return;
@@ -255,6 +271,12 @@ export default function Home() {
       });
       userMarker.current = L.marker(DEMO_START, { icon: userIcon, title: "Your starting point" }).addTo(map);
 
+      // Rotation, the on-screen keyboard and layout changes all resize the map
+      // container behind Leaflet's back.
+      const resizeObserver = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+      resizeObserver.observe(map.getContainer());
+      releaseObserver = () => resizeObserver.disconnect();
+
       const syncViewport = () => {
         const bounds = map.getBounds();
         setViewport({
@@ -270,6 +292,7 @@ export default function Home() {
     createMap();
     return () => {
       active = false;
+      releaseObserver?.();
       mapInstance.current?.remove();
       mapInstance.current = null;
       shapeStore.clear();
@@ -380,12 +403,16 @@ export default function Home() {
   useEffect(() => {
     if (!selected || !mapInstance.current) return;
     const map = mapInstance.current;
+    // Opening a profile hides the mobile sidebar, which grows the map panel.
+    // Leaflet caches its container size, so re-measure before framing.
+    map.invalidateSize({ animate: false });
     const zoom = Math.max(map.getZoom(), 18);
 
     let target: LatLng = selected.center;
     const drawerWidth = drawerSideWidth(map);
-    if (drawerWidth > 0) {
-      const shifted = map.project(selected.center, zoom).add([drawerWidth / 2, 0]);
+    const sheetHeight = drawerBottomHeight(map);
+    if (drawerWidth > 0 || sheetHeight > 0) {
+      const shifted = map.project(selected.center, zoom).add([drawerWidth / 2, sheetHeight / 2]);
       const unprojected = map.unproject(shifted, zoom);
       target = [unprojected.lat, unprojected.lng];
     }
@@ -422,7 +449,7 @@ export default function Home() {
         }).addTo(onMap);
         onMap.fitBounds(routeLine.current.getBounds(), {
           paddingTopLeft: [70, 70],
-          paddingBottomRight: [70 + drawerSideWidth(onMap), 70],
+          paddingBottomRight: [70 + drawerSideWidth(onMap), 70 + drawerBottomHeight(onMap)],
           maxZoom: 18,
         });
       }
@@ -550,7 +577,7 @@ export default function Home() {
         </button>
       </header>
 
-      <section className="workspace" id="top">
+      <section className={detailOpen && selected ? "workspace detail-open" : "workspace"} id="top">
         <aside className="sidebar" aria-label="Buildings in view">
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
