@@ -60,3 +60,41 @@
   .map-legend{gap:8px;padding:7px 10px;font-size:11px}
   .fetch-status{top:auto;bottom:118px}
 }
+
+/* ---- precise accessibility-point placement ----------------------------- */
+.pin-cursor,.pin-cursor .leaflet-interactive{cursor:crosshair!important}
+.draft-access-pin,.access-point-pin{position:relative;display:grid;place-items:center;color:#fff;border:3px solid #fff;transform:rotate(-45deg)}
+.draft-access-pin{width:46px;height:46px;border-radius:50% 50% 50% 7px;background:#d87500;box-shadow:0 0 0 6px rgba(216,117,0,.22),0 10px 25px rgba(72,45,10,.32)}
+.draft-access-pin span{font-size:21px;transform:rotate(45deg)}
+.access-point-pin{width:34px;height:34px;border-radius:50% 50% 50% 5px;background:var(--teal);box-shadow:0 7px 17px rgba(12,62,65,.34)}
+.access-point-pin span{font-size:15px;transform:rotate(45deg)}
+
+.pin-placement-bar{position:absolute;z-index:1000;top:84px;left:50%;transform:translateX(-50%);width:min(680px,calc(100% - 36px));display:flex;align-items:center;justify-content:space-between;gap:18px;background:rgba(255,255,255,.98);border:2px solid #d87500;border-radius:15px;padding:12px 13px;box-shadow:0 15px 38px rgba(30,52,56,.24);backdrop-filter:blur(12px)}
+.pin-placement-copy{display:flex;align-items:center;gap:10px;min-width:0}
+.pin-placement-icon{width:40px;height:40px;flex:0 0 auto;display:grid;place-items:center;border-radius:11px;background:#fff0dc;color:#a45600;font-size:23px}
+.pin-placement-copy div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pin-placement-copy b{font-size:12px;color:var(--navy)}
+.pin-placement-copy small{font-size:9px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.pin-placement-actions{display:flex;gap:7px;flex:0 0 auto}
+
+.pin-field{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:10px;border:1px dashed #d69a55;border-radius:11px;background:#fffaf2;padding:10px}
+.pin-field.placed{border-style:solid;border-color:#8fc5b8;background:#f0f8f5}
+.pin-field-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:9px;background:#fff0dc;color:#a45600;font-size:21px}
+.pin-field.placed .pin-field-icon{background:var(--teal);color:#fff}
+.pin-field div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pin-field b{font-size:10px;color:var(--navy)}
+.pin-field small{font-size:8px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+.pin-field button{border:1px solid var(--teal);border-radius:8px;background:#fff;color:var(--teal-dark);padding:8px 10px;font-size:9px;font-weight:850;cursor:pointer}
+.saved-coordinate{font-weight:700;color:var(--teal-dark)!important;background:var(--pale);border-radius:6px;padding:5px 7px}
+
+@media(max-width:760px){
+  .pin-placement-bar{top:72px;left:11px;right:11px;width:auto;transform:none;align-items:flex-start}
+  .pin-placement-actions{flex-direction:column}
+}
+@media(max-width:440px){
+  .pin-field{grid-template-columns:36px 1fr}
+  .pin-field button{grid-column:1/-1;width:100%}
+  .pin-placement-bar{flex-direction:column;gap:10px}
+  .pin-placement-actions{width:100%;flex-direction:row}
+  .pin-placement-actions button{flex:1}
+}

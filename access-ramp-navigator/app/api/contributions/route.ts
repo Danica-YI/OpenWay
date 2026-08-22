@@ -24,11 +24,27 @@ async function ensureSchema() {
       location TEXT NOT NULL,
       details TEXT NOT NULL,
       contributor TEXT NOT NULL DEFAULT 'Community member',
+      latitude REAL,
+      longitude REAL,
       status TEXT NOT NULL DEFAULT 'pending_review',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
     d1.prepare("CREATE INDEX IF NOT EXISTS contribution_building_idx ON accessibility_contributions (building_id, created_at)"),
   ]);
+
+  // Local prototypes may already have the earlier table in their persisted
+  // Wrangler state. Upgrade it in place as well as shipping the normal D1
+  // migration, so contributors do not have to delete their local database.
+  const columns = await d1.prepare("PRAGMA table_info(accessibility_contributions)").all<{ name: string }>();
+  const names = new Set(columns.results.map((column) => column.name));
+  for (const [name, definition] of [["latitude", "latitude REAL"], ["longitude", "longitude REAL"]] as const) {
+    if (names.has(name)) continue;
+    try {
+      await d1.prepare(`ALTER TABLE accessibility_contributions ADD COLUMN ${definition}`).run();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.toLowerCase().includes("duplicate column")) throw error;
+    }
+  }
 }
 
 function cleanText(value: unknown, max: number) {
@@ -67,13 +83,18 @@ export async function POST(request: Request) {
     const category = cleanText(payload.category, 40);
     const location = cleanText(payload.location, 140);
     const details = cleanText(payload.details, 800);
+    const latitude = typeof payload.latitude === "number" ? payload.latitude : Number.NaN;
+    const longitude = typeof payload.longitude === "number" ? payload.longitude : Number.NaN;
     if (!isBuildingId(buildingId)) return Response.json({ error: "Choose a building on the map first" }, { status: 400 });
     if (!CATEGORIES.has(category)) return Response.json({ error: "Choose a valid accessibility feature" }, { status: 400 });
     if (location.length < 3 || details.length < 10) return Response.json({ error: "Add an exact location and useful detail" }, { status: 400 });
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      return Response.json({ error: "Place the exact accessibility point on the map" }, { status: 400 });
+    }
 
     await ensureSchema();
     const [contribution] = await getDb().insert(accessibilityContributions).values({
-      buildingId, category, location, details,
+      buildingId, category, location, details, latitude, longitude,
       contributor: contributorName(request, payload.contributor),
       status: "pending_review",
     }).returning();
