@@ -190,11 +190,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       "Quiet room available on request at reception",
       "Assistance animals welcome throughout",
     ],
-    steps: [
-      "Follow Wickham Street with the HQ towers on your right",
-      "The step-free entrance is under the awning at the tower link",
-      "Reception is straight ahead; the lift core is on your left",
-    ],
     surveyedOn: "21 August 2026",
   },
 
@@ -231,11 +226,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       distance: "Use the North Tower bays; step-free link at basement level",
     },
     extras: ["Covered step-free link to North Tower", "Accessible end-of-trip facilities on Basement 1"],
-    steps: [
-      "Enter the plaza from Wickham Street",
-      "Keep left past the water feature",
-      "The ramp is beside the stairs on the plaza side",
-    ],
     surveyedOn: "21 August 2026",
   },
 
@@ -264,7 +254,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       distance: "Lift access to all retail levels",
     },
     extras: ["Companion care room on Level 1", "Wheelchair loan at centre management", "Hearing loop at concierge"],
-    steps: ["Head north-east to Ann Street", "The level entry is under the main awning", "Lifts are in the central atrium"],
     surveyedOn: "21 August 2026",
   },
 
@@ -297,7 +286,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       distance: "35 m, kerb ramp at the corner",
     },
     extras: ["Wide aisles throughout the showroom", "Seating at intervals"],
-    steps: ["Walk south-west along James Street", "The showroom is on your right", "The ramp is right of the main doors"],
     surveyedOn: "21 August 2026",
   },
 
@@ -330,7 +318,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       distance: "12 m to the ramp",
     },
     extras: ["Pram and wheelchair storage in the foyer", "Visual doorbell indicator at reception"],
-    steps: ["Follow Brookes Street to the drop-off bays", "The ramp starts at the western fence line", "Use the intercom at the top"],
     surveyedOn: "21 August 2026",
   },
 
@@ -359,7 +346,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
       distance: "Lift access from basement to all levels",
     },
     extras: ["Step-free path from the Brookes Street footpath", "Intercom at 1.1 m height"],
-    steps: ["Follow Brookes Street north", "The lobby is on the eastern frontage", "Use the intercom to the right of the door"],
     surveyedOn: "21 August 2026",
   },
 };

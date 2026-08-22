@@ -555,7 +555,7 @@ export default function Home() {
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
             <h1>Every access detail, in one place.</h1>
-            <p>Click any building on the map — even one nobody has surveyed yet — to see exactly what is known about getting inside.</p>
+            <p>Click any building on the map, even one nobody has surveyed yet, to see exactly what is known about getting inside.</p>
           </div>
 
           <label className="search-box">
@@ -938,7 +938,7 @@ function OsmSections({ building, onContribute, reportCount }: { building: MapBui
       )}
 
       <section className="gap-prompt">
-        <p>Missing the detail you need — ramp gradient, toilet level, parking bay location?</p>
+        <p>Know something we&apos;re missing? A ramp measurement, which toilet has a grab rail, where the accessible parking is. It helps the next person get in!</p>
         <button type="button" className="primary-action full" onClick={onContribute}>＋ Add what you know</button>
       </section>
     </>
