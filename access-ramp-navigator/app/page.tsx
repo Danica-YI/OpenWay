@@ -2,8 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
-import type { AccessLevel, BBox, LatLng, MapBuilding, OsmEntrance } from "../lib/osm";
+import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
+import type { WalkingRoute } from "../lib/routing";
 
 type Filter = "All" | "Surveyed" | "Step-free" | "Toilet" | "Needs info";
 type Tab = "details" | "route" | "community";
@@ -63,6 +64,11 @@ function formatDistance(metres: number): string {
 /** Deliberately slower than a walking estimate: this is a step-free travel time. */
 function formatDuration(metres: number): string {
   const minutes = Math.max(1, Math.round(metres / 66));
+  return `${minutes} min`;
+}
+
+function formatWalkingDuration(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes} min`;
 }
 
@@ -130,6 +136,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("details");
   const [detailOpen, setDetailOpen] = useState(false);
   const [routeVisible, setRouteVisible] = useState(false);
+  const [walkingRoute, setWalkingRoute] = useState<WalkingRoute | null>(null);
   const [location, setLocation] = useState<LatLng>(DEMO_START);
   const [locationMessage, setLocationMessage] = useState("Demo starting point");
 
@@ -147,6 +154,22 @@ export default function Home() {
     [buildings, selectedId],
   );
   const curated: SurveyedProfile | null = selected ? CURATED[selected.id] ?? null : null;
+
+  // The entrance to route toward. Curated profiles describe a verified accessible
+  // entrance ("West side, facing the...") but only as text — this turns that side
+  // into an actual point on the building's outline. Falls back to OpenStreetMap's
+  // own entrance tags (already preferring a wheelchair-tagged one) when a building
+  // has no curated profile, since that text isn't available to parse.
+  const routeEntrance = useMemo(() => {
+    if (!selected) return null;
+    if (curated) {
+      const sideWord = parseCompassWord(curated.entrance.side);
+      const point = sideWord ? pointOnSide(selected.center, selected.polygon, sideWord) : null;
+      if (point) return { point, side: sideWord! };
+    }
+    const osmEntrance = bestEntrance(selected);
+    return osmEntrance ? { point: osmEntrance.point, side: osmEntrance.side } : null;
+  }, [selected, curated]);
 
   const statusOf = useCallback(
     (building: MapBuilding): InfoStatus => {
@@ -370,35 +393,64 @@ export default function Home() {
     map.flyTo(target, zoom, { duration: 0.6 });
   }, [selected]);
 
-  // --- direct line to the entrance ----------------------------------------
+  // --- route to the entrance: real walking path when available, else a direct line ---
   useEffect(() => {
+    let ignore = false;
     async function drawRoute() {
-      if (!mapInstance.current) return;
+      const map = mapInstance.current;
+      if (!map) return;
       const L = await import("leaflet");
       routeLine.current?.remove();
       routeLine.current = null;
       routeHalo.current?.remove();
       routeHalo.current = null;
+      setWalkingRoute(null);
       if (!routeVisible || !selected) return;
 
-      const target = bestEntrance(selected)?.point ?? selected.center;
-      const points: LatLng[] = [location, target];
-      routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(mapInstance.current);
-      routeLine.current = L.polyline(points, {
-        color: "#087f73",
-        weight: 6,
-        opacity: 1,
-        lineCap: "round",
-        dashArray: "10 8",
-      }).addTo(mapInstance.current);
-      mapInstance.current.fitBounds(routeLine.current.getBounds(), {
-        paddingTopLeft: [70, 70],
-        paddingBottomRight: [70 + drawerSideWidth(mapInstance.current), 70],
-        maxZoom: 18,
-      });
+      const target = routeEntrance?.point ?? selected.center;
+
+      function render(onMap: LeafletMap, points: LatLng[], dashed: boolean) {
+        routeHalo.current?.remove();
+        routeLine.current?.remove();
+        routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(onMap);
+        routeLine.current = L.polyline(points, {
+          color: "#087f73",
+          weight: 6,
+          opacity: 1,
+          lineCap: "round",
+          dashArray: dashed ? "10 8" : undefined,
+        }).addTo(onMap);
+        onMap.fitBounds(routeLine.current.getBounds(), {
+          paddingTopLeft: [70, 70],
+          paddingBottomRight: [70 + drawerSideWidth(onMap), 70],
+          maxZoom: 18,
+        });
+      }
+
+      // Draw the direct line immediately so there's something on screen while the
+      // real walking route loads, then swap it for the real path if one is found.
+      render(map, [location, target], true);
+
+      try {
+        const response = await fetch(`/api/route?from=${location[0]},${location[1]}&to=${target[0]},${target[1]}`);
+        const payload = (await response.json()) as Partial<WalkingRoute>;
+        if (ignore || !routeVisible || !mapInstance.current) return;
+        if (response.ok && payload.points && payload.points.length > 1) {
+          render(mapInstance.current, payload.points, false);
+          setWalkingRoute({
+            points: payload.points,
+            distanceMetres: payload.distanceMetres ?? 0,
+            durationSeconds: payload.durationSeconds ?? 0,
+            steps: payload.steps ?? [],
+          });
+        }
+      } catch {
+        // Network hiccup: leave the direct-line fallback already on the map.
+      }
     }
     drawRoute();
-  }, [location, routeVisible, selected]);
+    return () => { ignore = true; };
+  }, [location, routeVisible, selected, routeEntrance]);
 
   // --- community reports for the selected building ------------------------
   useEffect(() => {
@@ -636,23 +688,37 @@ export default function Home() {
                     <div className="route-summary">
                       <span aria-hidden="true">♿</span>
                       <div>
-                        <b>{formatDistance(selectedDistance)} · About {formatDuration(selectedDistance)}</b>
+                        <b>
+                          {walkingRoute ? formatDistance(walkingRoute.distanceMetres) : formatDistance(selectedDistance)} · About{" "}
+                          {walkingRoute ? formatWalkingDuration(walkingRoute.durationSeconds) : formatDuration(selectedDistance)}
+                        </b>
                         <small>
-                          {bestEntrance(selected)
-                            ? `Toward the ${bestEntrance(selected)!.side} entrance`
+                          {routeEntrance
+                            ? `Toward the ${routeEntrance.side} entrance`
                             : "Toward the building centre — no entrance mapped yet"}
                         </small>
                       </div>
                     </div>
-                    {curated ? (
-                      <ol>{curated.steps.map((step, index) => <li key={step}><span>{index + 1}</span>{step}</li>)}</ol>
+                    {walkingRoute && walkingRoute.steps.length > 0 ? (
+                      <ol>
+                        {walkingRoute.steps.map((step, index) => (
+                          <li key={index}>
+                            <span>{index + 1}</span>
+                            {step.instruction}
+                            {step.distanceMetres >= 5 ? ` — ${formatDistance(step.distanceMetres)}` : ""}
+                          </li>
+                        ))}
+                      </ol>
                     ) : (
                       <p className="safety-note">
-                        No step-free directions for this building yet. The dashed line shows direct distance only, not a walkable route.
+                        {walkingRoute ? "No turn-by-turn directions available for this route." : "Loading walking directions…"}
                       </p>
                     )}
-                    <button type="button" className="primary-action full" onClick={() => setRouteVisible(true)}>Show on map <span aria-hidden="true">→</span></button>
-                    <p className="safety-note">Prototype routing. Check temporary closures and verify conditions before travel.</p>
+                    <p className="safety-note">
+                      {walkingRoute
+                        ? "These directions follow OpenStreetMap's mapped footpaths for general walking — they are not confirmed wheelchair-accessible and may include stairs. Check temporary closures and verify conditions before travel."
+                        : "Prototype routing. Check temporary closures and verify conditions before travel."}
+                    </p>
                   </section>
                 )}
 

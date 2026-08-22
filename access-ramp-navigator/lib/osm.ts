@@ -138,17 +138,52 @@ function accessLevel(value: string | undefined): AccessLevel {
 
 const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 
-/** Bearing from the building centre out to a point, expressed as a plain-language side. */
-export function compassSide(center: LatLng, point: LatLng): string {
+/** Bearing in degrees (0 = north, clockwise) from one point to another. */
+export function bearingDegrees(from: LatLng, to: LatLng): number {
   const toRad = Math.PI / 180;
-  const [lat1, lon1] = [center[0] * toRad, center[1] * toRad];
-  const [lat2, lon2] = [point[0] * toRad, point[1] * toRad];
+  const [lat1, lon1] = [from[0] * toRad, from[1] * toRad];
+  const [lat2, lon2] = [to[0] * toRad, to[1] * toRad];
   const deltaLon = lon2 - lon1;
   const y = Math.sin(deltaLon) * Math.cos(lat2);
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
   const bearing = (Math.atan2(y, x) * 180) / Math.PI;
-  const normalized = (bearing + 360) % 360;
-  return COMPASS[Math.round(normalized / 45) % 8];
+  return (bearing + 360) % 360;
+}
+
+/** Bearing from the building centre out to a point, expressed as a plain-language side. */
+export function compassSide(center: LatLng, point: LatLng): string {
+  return COMPASS[Math.round(bearingDegrees(center, point) / 45) % 8];
+}
+
+/** The compass word (e.g. "north-east") a free-text side description starts with, if any. */
+export function parseCompassWord(text: string): string | null {
+  const lower = text.toLowerCase();
+  const bySpecificity = [...COMPASS].sort((a, b) => b.length - a.length);
+  return bySpecificity.find((word) => lower.startsWith(word)) ?? null;
+}
+
+/**
+ * The polygon vertex that best represents "the {sideWord} side" of a building —
+ * whichever corner sits closest to that compass bearing from the centre. Used to
+ * turn a curated profile's free-text entrance side ("West side, facing the...")
+ * into an actual routable point, since curated data doesn't carry coordinates.
+ */
+export function pointOnSide(center: LatLng, polygon: LatLng[], sideWord: string): LatLng | null {
+  const targetIndex = COMPASS.indexOf(sideWord);
+  if (targetIndex === -1 || !polygon.length) return null;
+  const targetAngle = targetIndex * 45;
+
+  let best = polygon[0];
+  let bestDelta = Infinity;
+  for (const point of polygon) {
+    const bearing = bearingDegrees(center, point);
+    const delta = Math.min(Math.abs(bearing - targetAngle), 360 - Math.abs(bearing - targetAngle));
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = point;
+    }
+  }
+  return best;
 }
 
 export function pointInPolygon(point: LatLng, polygon: LatLng[]): boolean {
