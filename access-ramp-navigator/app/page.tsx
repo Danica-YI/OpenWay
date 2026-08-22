@@ -85,6 +85,22 @@ function bboxContains(outer: BBox, inner: BBox): boolean {
   return outer.south <= inner.south && outer.west <= inner.west && outer.north >= inner.north && outer.east >= inner.east;
 }
 
+/**
+ * The building drawer overlays the right side of the map (up to ~470px) on
+ * wider viewports, but stacks below it as a bottom sheet on narrow ones. Any
+ * map framing (flyTo, fitBounds) that ignores this ends up centering content
+ * behind the panel instead of in the space that's actually visible. Returns
+ * the panel's width in px when it's laid out as a side panel, else 0.
+ */
+function drawerSideWidth(map: LeafletMap): number {
+  const drawerEl = document.querySelector(".building-drawer");
+  if (!drawerEl) return 0;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const drawerRect = drawerEl.getBoundingClientRect();
+  const isSidePanel = drawerRect.top - mapRect.top < mapRect.height * 0.3 && drawerRect.width < mapRect.width * 0.7;
+  return isSidePanel ? drawerRect.width : 0;
+}
+
 export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
@@ -183,6 +199,7 @@ export default function Home() {
     setDetailOpen(true);
     setRouteVisible(tab === "route");
   }, []);
+
 
   // --- map bootstrap -------------------------------------------------------
   useEffect(() => {
@@ -334,7 +351,18 @@ export default function Home() {
   // --- pan to the selected building ---------------------------------------
   useEffect(() => {
     if (!selected || !mapInstance.current) return;
-    mapInstance.current.flyTo(selected.center, Math.max(mapInstance.current.getZoom(), 18), { duration: 0.6 });
+    const map = mapInstance.current;
+    const zoom = Math.max(map.getZoom(), 18);
+
+    let target: LatLng = selected.center;
+    const drawerWidth = drawerSideWidth(map);
+    if (drawerWidth > 0) {
+      const shifted = map.project(selected.center, zoom).add([drawerWidth / 2, 0]);
+      const unprojected = map.unproject(shifted, zoom);
+      target = [unprojected.lat, unprojected.lng];
+    }
+
+    map.flyTo(target, zoom, { duration: 0.6 });
   }, [selected]);
 
   // --- direct line to the entrance ----------------------------------------
@@ -358,7 +386,11 @@ export default function Home() {
         lineCap: "round",
         dashArray: "10 8",
       }).addTo(mapInstance.current);
-      mapInstance.current.fitBounds(routeLine.current.getBounds(), { padding: [70, 70], maxZoom: 18 });
+      mapInstance.current.fitBounds(routeLine.current.getBounds(), {
+        paddingTopLeft: [70, 70],
+        paddingBottomRight: [70 + drawerSideWidth(mapInstance.current), 70],
+        maxZoom: 18,
+      });
     }
     drawRoute();
   }, [location, routeVisible, selected]);
