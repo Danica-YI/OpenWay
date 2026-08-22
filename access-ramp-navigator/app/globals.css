@@ -57,11 +57,14 @@
 .report-button:disabled:hover{border-color:#b9cfcd;color:inherit}
 
 /* ---- hamburger toggle (mobile only) ------------------------------------- */
-.menu-toggle{display:none;width:41px;height:41px;border:1px solid #b9cfcd;border-radius:10px;background:#fff;cursor:pointer;padding:0;place-items:center;gap:4px;flex-direction:column}
+.menu-toggle{display:none;width:41px;height:41px;border:1px solid #b9cfcd;border-radius:10px;background:#fff;cursor:pointer;padding:0;align-items:center;justify-content:center;gap:4px;flex-direction:column}
 .menu-toggle span{display:block;width:17px;height:2px;border-radius:2px;background:var(--navy);transition:transform .2s,opacity .2s}
 .menu-toggle.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
 .menu-toggle.open span:nth-child(2){opacity:0}
 .menu-toggle.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+
+/* ---- expandable profile sheet (mobile) ---------------------------------- */
+.sheet-handle{display:none}
 
 /* ---- mobile layout ------------------------------------------------------ */
 @media(max-width:760px){
@@ -121,8 +124,29 @@
   /* Stacked under the locate button, so the sheet never covers the zoom. */
   .leaflet-top.leaflet-right{top:54px}
 
-  /* Sits above the attribution strip rather than hiding it. */
-  .building-drawer{position:fixed;left:8px;right:8px;bottom:22px;top:auto;width:auto;max-height:54vh;max-height:54dvh;z-index:1200}
+  /* Sits above the attribution strip rather than hiding it. Tapping the
+     handle trades map for reading room without hiding the map entirely. */
+  .building-drawer{position:fixed;left:8px;right:8px;bottom:22px;top:auto;width:auto;max-height:54vh;max-height:54dvh;z-index:1200;transition:max-height .24s ease}
+    /* Anchored below the control stack rather than to a share of the screen: the
+     stack sits at a fixed offset, so a percentage clears it on a tall phone and
+     covers the zoom buttons on a short one. 208px = 186 top + 22 bottom. */
+  .building-drawer.expanded{max-height:calc(100vh - 208px);max-height:calc(100dvh - 208px)}
+  .sheet-handle{display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+    width:100%;height:24px;padding:0;border:0;background:transparent;cursor:pointer;touch-action:manipulation}
+  .sheet-handle>span{width:38px;height:4px;border-radius:2px;background:#c6d2d8;transition:background .15s,width .15s}
+  .sheet-handle:hover>span,.sheet-handle:active>span{background:#93a7b0;width:46px}
+
+  /* The header was spending most of the sheet on chrome rather than on the
+     access details people opened it for. */
+  .drawer-header{padding:2px 13px 6px;gap:10px}
+  .drawer-header h2{font-size:18px;line-height:1.15}
+  .drawer-header>div>p{font-size:11px;line-height:1.35;margin:3px 0 0}
+  /* Redundant on a phone: the sheet is plainly a building profile. */
+  .drawer-header .detail-type{display:none}
+  .close-detail{width:28px;height:28px;font-size:18px}
+  .profile-meta{padding:0 13px 8px}
+  .source-badge{font-size:10.5px;padding:3px 8px}
+  .tabs button{padding:8px 4px 6px}
 }
 
 @media(max-width:440px){

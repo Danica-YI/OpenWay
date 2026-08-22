@@ -156,6 +156,7 @@ export default function Home() {
   const [locationMessage, setLocationMessage] = useState("Demo starting point");
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loadingContributions, setLoadingContributions] = useState(false);
@@ -700,7 +701,13 @@ export default function Home() {
 
           <div className="map-top-controls">
             <button className="locate-button" type="button" onClick={locateUser} aria-label={`Use my location. ${locationMessage}`} title="Use my location">
-              <span aria-hidden="true">◎</span>
+              <span aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+                  <path d="M12 1.5v3.2M12 19.3v3.2M1.5 12h3.2M19.3 12h3.2" />
+                </svg>
+              </span>
               <span><b>Use my location</b><small>{locationMessage}</small></span>
             </button>
             <div className="map-legend" role="note" aria-label="Map colour key">
@@ -714,14 +721,23 @@ export default function Home() {
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
 
           {detailOpen && selected && (
-            <article className="building-drawer" aria-live="polite">
+            <article className={sheetExpanded ? "building-drawer expanded" : "building-drawer"} aria-live="polite">
+              <button
+                className="sheet-handle"
+                type="button"
+                aria-label={sheetExpanded ? "Collapse building details" : "Expand building details"}
+                aria-expanded={sheetExpanded}
+                onClick={() => setSheetExpanded((open) => !open)}
+              >
+                <span aria-hidden="true" />
+              </button>
               <div className="drawer-header">
                 <div>
                   <span className="detail-type">BUILDING ACCESS PROFILE</span>
                   <h2>{displayName(selected)}</h2>
                   <p>{selected.kind}{selected.address ? ` · ${selected.address}` : ""}{selected.levels ? ` · ${selected.levels} levels` : ""}</p>
                 </div>
-                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); }}>×</button>
+                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); setSheetExpanded(false); }}>×</button>
               </div>
 
               <div className="profile-meta">
