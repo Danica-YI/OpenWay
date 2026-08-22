@@ -420,50 +420,23 @@ export default function Home() {
     map.flyTo(target, zoom, { duration: 0.6 });
   }, [selected]);
 
-  // --- route to the entrance: real walking path when available, else a direct line ---
+  // --- fetch the walking route in the background as soon as a building is
+  // selected, not gated on the Route tab being open. The public routing
+  // service takes ~1s to respond, so starting this early (while someone is
+  // still reading the Accessibility tab) means it's often already loaded by
+  // the time they actually click "Route" — instead of watching it happen.
   useEffect(() => {
     let ignore = false;
-    async function drawRoute() {
-      const map = mapInstance.current;
-      if (!map) return;
-      const L = await import("leaflet");
-      routeLine.current?.remove();
-      routeLine.current = null;
-      routeHalo.current?.remove();
-      routeHalo.current = null;
+
+    (async () => {
       setWalkingRoute(null);
-      if (!routeVisible || !selected) return;
-
+      if (!selected) return;
       const target = routeEntrance?.point ?? selected.center;
-
-      function render(onMap: LeafletMap, points: LatLng[], dashed: boolean) {
-        routeHalo.current?.remove();
-        routeLine.current?.remove();
-        routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(onMap);
-        routeLine.current = L.polyline(points, {
-          color: "#087f73",
-          weight: 6,
-          opacity: 1,
-          lineCap: "round",
-          dashArray: dashed ? "10 8" : undefined,
-        }).addTo(onMap);
-        onMap.fitBounds(routeLine.current.getBounds(), {
-          paddingTopLeft: [70, 70],
-          paddingBottomRight: [70 + drawerSideWidth(onMap), 70 + drawerBottomHeight(onMap)],
-          maxZoom: 18,
-        });
-      }
-
-      // Draw the direct line immediately so there's something on screen while the
-      // real walking route loads, then swap it for the real path if one is found.
-      render(map, [location, target], true);
-
       try {
         const response = await fetch(`/api/route?from=${location[0]},${location[1]}&to=${target[0]},${target[1]}`);
         const payload = (await response.json()) as Partial<WalkingRoute>;
-        if (ignore || !routeVisible || !mapInstance.current) return;
+        if (ignore) return;
         if (response.ok && payload.points && payload.points.length > 1) {
-          render(mapInstance.current, payload.points, false);
           setWalkingRoute({
             points: payload.points,
             distanceMetres: payload.distanceMetres ?? 0,
@@ -472,12 +445,48 @@ export default function Home() {
           });
         }
       } catch {
-        // Network hiccup: leave the direct-line fallback already on the map.
+        // Network hiccup: the drawing effect below falls back to a direct line.
       }
-    }
-    drawRoute();
+    })();
+
     return () => { ignore = true; };
-  }, [location, routeVisible, selected, routeEntrance]);
+  }, [location, selected, routeEntrance]);
+
+  // --- draw the route on the map whenever the Route tab is open: the real
+  // walking path once it's loaded, else a direct dashed line as a placeholder ---
+  useEffect(() => {
+    let cancelled = false;
+    async function draw() {
+      const map = mapInstance.current;
+      routeLine.current?.remove();
+      routeLine.current = null;
+      routeHalo.current?.remove();
+      routeHalo.current = null;
+      if (!map || !routeVisible || !selected) return;
+
+      const target = routeEntrance?.point ?? selected.center;
+      const points = walkingRoute?.points ?? [location, target];
+      const dashed = !walkingRoute;
+
+      const L = await import("leaflet");
+      if (cancelled || mapInstance.current !== map) return;
+      routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(map);
+      routeLine.current = L.polyline(points, {
+        color: "#087f73",
+        weight: 6,
+        opacity: 1,
+        lineCap: "round",
+        dashArray: dashed ? "10 8" : undefined,
+      }).addTo(map);
+      map.fitBounds(routeLine.current.getBounds(), {
+        paddingTopLeft: [70, 70],
+        paddingBottomRight: [70 + drawerSideWidth(map), 70 + drawerBottomHeight(map)],
+        maxZoom: 18,
+      });
+    }
+    draw();
+    return () => { cancelled = true; };
+  }, [routeVisible, walkingRoute, selected, location, routeEntrance]);
 
   // --- community reports for the selected building ------------------------
   useEffect(() => {
