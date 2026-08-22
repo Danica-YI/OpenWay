@@ -56,90 +56,106 @@
 .report-button:disabled{opacity:.5;cursor:not-allowed}
 .report-button:disabled:hover{border-color:#b9cfcd;color:inherit}
 
+/* ---- hamburger toggle (mobile only) ------------------------------------- */
+.menu-toggle{display:none;width:41px;height:41px;border:1px solid #b9cfcd;border-radius:10px;background:#fff;cursor:pointer;padding:0;place-items:center;gap:4px;flex-direction:column}
+.menu-toggle span{display:block;width:17px;height:2px;border-radius:2px;background:var(--navy);transition:transform .2s,opacity .2s}
+.menu-toggle.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+.menu-toggle.open span:nth-child(2){opacity:0}
+.menu-toggle.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+
 /* ---- mobile layout ------------------------------------------------------ */
 @media(max-width:760px){
-  /* A fixed app shell rather than a scrolling document. The old layout let the
-     page scroll, which meant a full-height map swallowed every upward swipe and
-     there was no way back to the top. Nothing scrolls at the page level now:
-     the sidebar scrolls inside itself and the map is a bounded region. */
+  /* A fixed app shell rather than a scrolling document. Nothing scrolls at the
+     page level: the browse panel scrolls inside itself and the map is a
+     bounded region, so neither can trap the other. */
   body{overflow:hidden}
   .app-shell{height:100vh;height:100dvh;display:flex;flex-direction:column;min-height:0}
   .topbar{flex:0 0 auto;height:52px;padding:0 12px;gap:10px}
-  .workspace{flex:1 1 auto;min-height:0;height:auto;display:flex;flex-direction:column}
-  .map-panel{flex:1 1 auto;min-height:0;height:auto}
+  .workspace{flex:1 1 auto;min-height:0;height:auto;display:block;position:relative}
 
-  /* Roughly a third for the list, two thirds for the map. */
-  .sidebar{flex:0 0 auto;max-height:33%;overflow-y:auto;padding:11px 12px 8px}
+  /* The map gets the entire shell. Everything else floats over it. */
+  .map-panel{position:absolute;inset:0;height:auto;min-height:0}
 
   .brand{font-size:17px;gap:9px}
   .brand-mark{width:30px;height:30px;font-size:17px;border-radius:10px 10px 10px 3px}
-  .report-button{padding:7px 9px}
-  .report-button span{font-size:17px}
+  /* A contribution needs a selected building, and the drawer already offers
+     one, so the header action gives its space to the menu on a phone. */
+  .report-button{display:none}
+  .menu-toggle{display:flex;margin-left:auto}
 
-  /* The heading was eating most of the first screen before the map appeared. */
-  .sidebar-heading{margin-bottom:8px}
-  /* Decorative on a phone, and it costs a line of the map. */
-  .eyebrow{display:none}
-  .sidebar-heading h1{font-size:21px;line-height:1.12;letter-spacing:-.5px;max-width:none}
-  .sidebar-heading>p:last-child{font-size:12px;line-height:1.4;margin:5px 0 0}
-  .search-box{height:38px}
-  .filter-row{padding:7px 0 8px}
-  .results-meta{margin-bottom:5px;font-size:9.5px}
+  /* The list, search, filters and heading live in a panel behind the menu
+     button instead of permanently occupying the top third of the screen. */
+  .sidebar{position:absolute;inset:0;z-index:1300;max-height:none;border-right:0;
+    overflow-y:auto;padding:16px 14px 22px;background:#fbfcfa;
+    transform:translateY(-101%);visibility:hidden;transition:transform .24s ease,visibility .24s}
+  .workspace.menu-open .sidebar{transform:none;visibility:visible}
 
-  /* Compact cards: the old ones were mostly padding. */
-  .location-list{grid-auto-columns:minmax(248px,74vw);gap:8px;padding-bottom:4px}
-  .location-card{padding:8px;grid-template-columns:34px 1fr auto;gap:8px}
+  .sidebar-heading{margin-bottom:12px}
+  .eyebrow{font-size:9px;letter-spacing:.14em;margin:0 0 4px}
+  .sidebar-heading h1{font-size:23px;line-height:1.12;letter-spacing:-.5px;max-width:none}
+  .sidebar-heading>p:last-child{font-size:12.5px;line-height:1.45;margin:6px 0 0}
+  .search-box{height:42px}
+  .filter-row{padding:10px 0 11px}
+
+  /* Vertical list again: the panel is full height, so there is room for it. */
+  .location-list{display:flex;flex-direction:column;gap:8px}
+  .location-card{padding:9px 8px;grid-template-columns:34px 1fr auto;gap:9px}
   .location-icon{width:34px;height:34px;border-radius:9px;font-size:10px}
-  /* One line each, so every card is the same height and the row does not
-     stretch to whichever card happens to have the longest name. */
-  .location-copy strong{font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .location-copy>span:not(.feature-chips){-webkit-line-clamp:1;font-size:9.5px}
-  .feature-chips{margin-top:2px;flex-wrap:nowrap;overflow:hidden}
-  .feature-chips i{font-size:7.5px;padding:2px 4px}
-  .distance{margin-top:1px}
+  .location-copy strong{font-size:13px;line-height:1.25}
+  .location-copy>span:not(.feature-chips){-webkit-line-clamp:2;font-size:10px}
+  .feature-chips i{font-size:8px;padding:2px 5px}
+
+  /* Map controls, arranged like a mobile map app: nothing in the middle, and
+     nothing on top of the zoom buttons. */
+  .map-top-controls{display:contents}
+  .locate-button{position:absolute;z-index:500;top:10px;right:10px;width:44px;height:44px;
+    padding:0;justify-content:center;border-radius:12px}
+  .locate-button>span:last-child{display:none}
+  .locate-button>span:first-child{width:26px;height:26px;background:transparent;color:var(--teal);font-size:23px}
+  .map-legend{position:absolute;z-index:500;top:10px;left:10px;gap:7px;padding:6px 9px;font-size:10px}
+  /* Clear of the attribution strip below it and the zoom buttons to its right. */
+  .prototype-note{left:10px;right:auto;bottom:24px;max-width:60%;text-align:left;font-size:9.5px;line-height:1.4}
+  .fetch-status{top:auto;bottom:64px}
 
   /* Sheet pinned to the viewport, sized to leave usable map above it. */
-  .building-drawer{position:fixed;left:8px;right:8px;bottom:8px;top:auto;width:auto;max-height:50vh;max-height:50dvh;z-index:1200}
+  /* Stacked under the locate button, so the sheet never covers the zoom. */
+  .leaflet-top.leaflet-right{top:54px}
 
-  /* Locate button and legend no longer fit on one line. */
-  .map-top-controls{flex-wrap:wrap;gap:8px;top:10px;left:10px;right:10px}
-  .map-legend{margin-left:auto;gap:8px;padding:6px 9px;font-size:10.5px}
-
-  .fetch-status{top:auto;bottom:14px}
+  /* Sits above the attribution strip rather than hiding it. */
+  .building-drawer{position:fixed;left:8px;right:8px;bottom:22px;top:auto;width:auto;max-height:54vh;max-height:54dvh;z-index:1200}
 }
 
 @media(max-width:440px){
-  /* Below this width the standfirst costs more than it earns. */
-  .sidebar-heading>p:last-child{display:none}
-  .sidebar-heading h1{font-size:19px}
-  .map-legend{font-size:10px;gap:6px;padding:5px 8px}
+  .sidebar-heading h1{font-size:21px}
+  .map-legend{font-size:9.5px;gap:6px;padding:5px 8px}
   .swatch{width:11px;height:11px}
 }
 
 /* Up to this width a fixed sidebar plus the drawer leave almost no map. Give
    the map the full width while a profile is open; closing restores the list. */
-@media(max-width:900px){
+@media(min-width:761px) and (max-width:900px){
   .workspace.detail-open{grid-template-columns:1fr}
   .workspace.detail-open .sidebar{display:none}
 }
 
-/* On phones the list is the only way to reach another building without closing
-   the profile, so keep it and drop the chrome around it instead. */
-@media(max-width:760px){
-  .workspace.detail-open .sidebar{display:block;max-height:none;padding:8px 12px}
-  .workspace.detail-open .sidebar-heading,
-  .workspace.detail-open .search-box,
-  .workspace.detail-open .filter-row,
-  .workspace.detail-open .results-meta{display:none}
-  .workspace.detail-open .location-list{padding-bottom:0}
-}
-
 /* Landscape phones: almost no vertical room, so drop the headline and keep the
    drawer narrow enough to leave usable map beside it. */
-@media(max-height:500px) and (orientation:landscape){
+@media(max-height:500px) and (orientation:landscape) and (min-width:761px){
   .sidebar-heading{display:none}
   .workspace{grid-template-columns:270px 1fr}
   .building-drawer{width:min(330px,calc(100% - 24px));right:12px;top:12px;bottom:12px}
   .map-legend{display:none}
   .locate-button{padding:7px 10px 7px 8px}
+  /* Keep the OpenStreetMap credit out from behind the drawer. */
+  .workspace.detail-open .leaflet-control-attribution{margin-right:342px}
+}
+
+/* The drawer overlays the right of the map, which put it on top of the zoom
+   buttons whenever a profile was open. Shift the zoom clear of it; the
+   attribution sits below the drawer already and stays where it is. */
+@media(min-width:761px) and (max-width:1020px){
+  .workspace.detail-open .leaflet-control-zoom{margin-right:462px}
+}
+@media(min-width:1021px){
+  .workspace.detail-open .leaflet-control-zoom{margin-right:498px}
 }
