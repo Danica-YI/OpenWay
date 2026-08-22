@@ -714,7 +714,7 @@ export default function Home() {
                     <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
                   </select>
                 </label>
-                <label>Your name <small>(optional)</small>
+                <label><span>Your name <small>(optional)</small></span>
                   <input value={form.contributor} maxLength={60} onChange={(e) => setForm({ ...form, contributor: e.target.value })} placeholder="Community member" />
                 </label>
               </div>
