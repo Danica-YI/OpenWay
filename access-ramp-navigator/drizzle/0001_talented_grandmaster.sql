@@ -1,0 +1,1 @@
+CREATE INDEX `contribution_building_idx` ON `accessibility_contributions` (`building_id`,`created_at`);
