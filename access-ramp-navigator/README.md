@@ -85,6 +85,15 @@ in the UI:
 | `db/schema.ts` | Database schema |
 | `.openai/hosting.json` | Cloudflare binding names — **required for the dev server to start** |
 
+## Moving the demo location
+
+The map opens at `DEFAULT_CENTER` in `app/page.tsx`, with `DEMO_START` as the
+stand-in "you are here" pin until a visitor grants location permission. Both are
+constants at the top of the file, with the QUT coordinates kept in a comment.
+
+Currently set to the TechnologyOne HQ precinct in Fortitude Valley. Surveyed
+profiles exist for both areas, so either works as a demo.
+
 ## Adding a surveyed building
 
 1. Find the building on <https://www.openstreetmap.org> and click it.

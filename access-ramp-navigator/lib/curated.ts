@@ -93,7 +93,7 @@ export const CURATED: Record<string, SurveyedProfile> = {
     toilet: { level: "Level 1", location: "Room P1-12, near the southern lift", features: "Right-hand transfer and emergency call cord" },
     lift: {
       location: "South lobby",
-      serves: "Ground–Level 8",
+      serves: "Ground–Level 12",
       details: "Tactile controls, audible announcements and a fold-down seat",
     },
     parking: { spaces: "No dedicated bay at building", location: "Use the V Block west bays", distance: "210 m via level path" },
@@ -150,5 +150,222 @@ export const CURATED: Record<string, SurveyedProfile> = {
     extras: ["Removable wheelchair seating", "Infrared hearing assistance", "Companion seating beside wheelchair spaces"],
     steps: ["Follow the Main Walk east past the gardens", "Turn left around the building edge", "Continue to the theatre ramp"],
     surveyedOn: "15 August 2026",
+  },
+
+  // ---------------------------------------------------------------------
+  // TechnologyOne HQ precinct, Fortitude Valley — pitch venue demo data.
+  // Real buildings and real OpenStreetMap ids; the access details below are
+  // illustrative sample data, not a physical audit.
+  // ---------------------------------------------------------------------
+
+  // HQ North Tower — TechnologyOne headquarters, 540 Wickham Street
+  "way/58694263": {
+    entrance: {
+      side: "South-west side, facing Wickham Street",
+      level: "Ground floor, level threshold from the footpath",
+      door: "Automatic sliding doors, 1.8 m clear opening",
+      hours: "6:00 am–7:00 pm weekdays, security access after hours",
+    },
+    ramp: {
+      side: "North-east side, up from the Gipps Street car park",
+      rise: "0.62 m vertical rise",
+      length: "9.4 m",
+      width: "1.8 m clear width",
+      slope: "1:15",
+      surface: "Textured concrete with contrasting nosing",
+      handrails: "Both sides, dual height at 865 mm and 700 mm",
+    },
+    toilet: {
+      level: "Ground floor (accessible toilets on every level)",
+      location: "Room G-14, immediately left of the lift lobby",
+      features: "Right-hand transfer, 950 mm circulation space, emergency call button",
+    },
+    lift: {
+      location: "Central lift core, 15 m straight ahead from the Wickham Street doors",
+      serves: "Ground–Level 11",
+      details: "Four cars, 1.1 m doors, braille and tactile controls, audible floor announcements",
+    },
+    parking: {
+      spaces: "4 accessible bays",
+      location: "Basement 1, entry from Gipps Street",
+      distance: "Direct lift from bay level to reception",
+    },
+    extras: [
+      "Hearing loop at the reception desk",
+      "Visitor sign-in screen at 900 mm height",
+      "Quiet room available on request at reception",
+      "Assistance animals welcome throughout",
+    ],
+    steps: [
+      "Follow Wickham Street with the HQ towers on your right",
+      "The step-free entrance is under the awning at the tower link",
+      "Reception is straight ahead; the lift core is on your left",
+    ],
+    surveyedOn: "21 August 2026",
+  },
+
+  // HQ South Tower
+  "way/58694264": {
+    entrance: {
+      side: "West side, from the plaza between the two towers",
+      level: "Ground floor",
+      door: "Manual door with power-assist button at 1.0 m",
+      hours: "7:00 am–6:00 pm weekdays",
+    },
+    ramp: {
+      side: "West plaza side, beside the stairs",
+      rise: "0.45 m vertical rise",
+      length: "7.2 m",
+      width: "1.5 m clear width",
+      slope: "1:16",
+      surface: "Bonded aggregate",
+      handrails: "Both sides, with a bottom landing",
+    },
+    toilet: {
+      level: "Level 2",
+      location: "Room 2-06, beside the fire stair",
+      features: "Left-hand transfer and emergency call cord",
+    },
+    lift: {
+      location: "Plaza lobby, right of the building directory",
+      serves: "Ground–Level 6",
+      details: "1.0 m doors, tactile controls, no audible announcements",
+    },
+    parking: {
+      spaces: "Shared with North Tower",
+      location: "Basement 1, entry from Gipps Street",
+      distance: "Use the North Tower bays; step-free link at basement level",
+    },
+    extras: ["Covered step-free link to North Tower", "Accessible end-of-trip facilities on Basement 1"],
+    steps: [
+      "Enter the plaza from Wickham Street",
+      "Keep left past the water feature",
+      "The ramp is beside the stairs on the plaza side",
+    ],
+    surveyedOn: "21 August 2026",
+  },
+
+  // Emporium
+  "way/58694266": {
+    entrance: {
+      side: "North side, Ann Street frontage",
+      level: "Ground floor, level entry",
+      door: "Automatic sliding doors, 1.7 m opening",
+      hours: "Retail 9:00 am–6:00 pm; hotel lobby 24 hours",
+    },
+    ramp: null,
+    toilet: {
+      level: "Level 1",
+      location: "Beside the centre management office",
+      features: "Right-hand transfer, adult change facility and emergency alarm",
+    },
+    lift: {
+      location: "Central atrium",
+      serves: "Basement–Level 4",
+      details: "Glass car, 1.1 m doors, audible announcements",
+    },
+    parking: {
+      spaces: "6 accessible bays",
+      location: "Basement car park, entry from Ann Street",
+      distance: "Lift access to all retail levels",
+    },
+    extras: ["Companion care room on Level 1", "Wheelchair loan at centre management", "Hearing loop at concierge"],
+    steps: ["Head north-east to Ann Street", "The level entry is under the main awning", "Lifts are in the central atrium"],
+    surveyedOn: "21 August 2026",
+  },
+
+  // Coco Republic
+  "way/40717416": {
+    entrance: {
+      side: "South-east side, facing James Street",
+      level: "Ground floor",
+      door: "Manual double doors, held open during trading hours",
+      hours: "10:00 am–5:00 pm",
+    },
+    ramp: {
+      side: "South-east, immediately right of the main doors",
+      rise: "0.28 m vertical rise",
+      length: "4.6 m",
+      width: "1.4 m clear width",
+      slope: "1:17",
+      surface: "Polished concrete with grip inlay",
+      handrails: "One side only — on your left when ascending",
+    },
+    toilet: {
+      level: "Ground floor",
+      location: "Rear of the showroom, past the design studio",
+      features: "Left-hand transfer; door opens outward into the corridor",
+    },
+    lift: null,
+    parking: {
+      spaces: "2 accessible bays",
+      location: "James Street, metered",
+      distance: "35 m, kerb ramp at the corner",
+    },
+    extras: ["Wide aisles throughout the showroom", "Seating at intervals"],
+    steps: ["Walk south-west along James Street", "The showroom is on your right", "The ramp is right of the main doors"],
+    surveyedOn: "21 August 2026",
+  },
+
+  // Goodstart Fortitude Valley
+  "way/375769756": {
+    entrance: {
+      side: "West side, from the Brookes Street drop-off",
+      level: "Ground floor, level threshold",
+      door: "Secure intercom door, call button at 1.0 m",
+      hours: "6:30 am–6:30 pm weekdays",
+    },
+    ramp: {
+      side: "West, up from the drop-off bay",
+      rise: "0.34 m vertical rise",
+      length: "5.5 m",
+      width: "1.5 m clear width",
+      slope: "1:16",
+      surface: "Non-slip rubberised surface",
+      handrails: "Both sides, at child and adult height",
+    },
+    toilet: {
+      level: "Ground floor",
+      location: "Family room beside the foyer",
+      features: "Right-hand transfer, adult and child change tables",
+    },
+    lift: null,
+    parking: {
+      spaces: "1 accessible bay plus 2 drop-off bays",
+      location: "Brookes Street frontage",
+      distance: "12 m to the ramp",
+    },
+    extras: ["Pram and wheelchair storage in the foyer", "Visual doorbell indicator at reception"],
+    steps: ["Follow Brookes Street to the drop-off bays", "The ramp starts at the western fence line", "Use the intercom at the top"],
+    surveyedOn: "21 August 2026",
+  },
+
+  // Brooklyn on Brookes
+  "way/375770782": {
+    entrance: {
+      side: "East side, Brookes Street lobby",
+      level: "Ground floor, level from the footpath",
+      door: "Intercom-controlled glass door, 0.95 m clear width",
+      hours: "Residents 24 hours; visitors via intercom",
+    },
+    ramp: null,
+    toilet: {
+      level: "No public accessible toilet",
+      location: "Residential building — facilities are within apartments",
+      features: "Step-free apartments available on Levels 2 and 5",
+    },
+    lift: {
+      location: "Lobby, right of the mailboxes",
+      serves: "Basement–Level 14",
+      details: "0.9 m door — narrower than the current standard; measure before relying on it",
+    },
+    parking: {
+      spaces: "2 accessible resident bays",
+      location: "Basement, ramp entry from Brookes Street",
+      distance: "Lift access from basement to all levels",
+    },
+    extras: ["Step-free path from the Brookes Street footpath", "Intercom at 1.1 m height"],
+    steps: ["Follow Brookes Street north", "The lobby is on the eastern frontage", "Use the intercom to the right of the door"],
+    surveyedOn: "21 August 2026",
   },
 };

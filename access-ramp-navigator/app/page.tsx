@@ -22,7 +22,12 @@ type Contribution = {
   createdAt: string;
 };
 
-const DEMO_START: LatLng = [-27.47643, 153.02784];
+// --- Demo venue ----------------------------------------------------------
+// Where the map opens, and the stand-in "you are here" pin used until the
+// visitor grants location permission. Change these two to move the demo.
+//   QUT Gardens Point: centre [-27.47700, 153.02810], start [-27.47643, 153.02784]
+const DEFAULT_CENTER: LatLng = [-27.45270, 153.03800]; // TechnologyOne HQ, 540 Wickham St
+const DEMO_START: LatLng = [-27.45380, 153.03900]; // Wickham St, ~180 m south-east of HQ
 const MIN_ZOOM = 16;
 const MAX_RENDERED = 600;
 
@@ -210,7 +215,7 @@ export default function Home() {
       const L = await import("leaflet");
       if (!active || !mapElement.current) return;
 
-      const map = L.map(mapElement.current, { zoomControl: false }).setView([-27.47700, 153.02810], 17);
+      const map = L.map(mapElement.current, { zoomControl: false }).setView(DEFAULT_CENTER, 17);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 20,
