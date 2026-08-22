@@ -14,7 +14,6 @@ export type SurveyedProfile = {
   lift: { location: string; serves: string; details: string } | null;
   parking: { spaces: string; location: string; distance: string };
   extras: string[];
-  steps: string[];
   surveyedOn: string;
 };
 
@@ -48,7 +47,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
     },
     parking: { spaces: "2 accessible bays", location: "West service road", distance: "65 m from the ramp" },
     extras: ["Hearing loop at the help desk", "Low-height service counter", "Assistance animals welcome"],
-    steps: ["Follow the Main Drive walkway south", "Turn right at the lawn crossing", "The ramp begins on your left"],
     surveyedOn: "18 August 2026",
   },
 
@@ -69,7 +67,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
     lift: { location: "Behind reception", serves: "Ground–Level 4", details: "Wide car with rear mirror and braille controls" },
     parking: { spaces: "3 accessible bays", location: "Main Drive short-stay area", distance: "40 m from entrance" },
     extras: ["Quiet waiting room", "Hearing loop at reception", "Wheelchair-height water fountain"],
-    steps: ["Follow Main Drive south", "Use the raised Main Walk crossing", "Continue east to the automatic entrance"],
     surveyedOn: "20 August 2026",
   },
 
@@ -98,7 +95,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
     },
     parking: { spaces: "No dedicated bay at building", location: "Use the V Block west bays", distance: "210 m via level path" },
     extras: ["Covered arrival area", "Height-adjustable desks in the ground-floor lab", "Assistance phone at entrance"],
-    steps: ["Take the eastern walkway toward the Cube", "Keep right around the plaza", "Join the covered ramp beside the blue sign"],
     surveyedOn: "16 August 2026",
   },
 
@@ -123,7 +119,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
     },
     parking: { spaces: "1 accessible bay", location: "North service court", distance: "55 m from the courtyard entrance" },
     extras: ["Lowered laboratory bench on Level 2", "Visual fire alarms", "Quiet room on Level 1"],
-    steps: ["Take the northern level path east", "Turn right into the courtyard", "Use the automatic door; the lift is on the right"],
     surveyedOn: "19 August 2026",
   },
 
@@ -148,7 +143,6 @@ export const CURATED: Record<string, SurveyedProfile> = {
     lift: null,
     parking: { spaces: "4 accessible bays", location: "Eastern car park", distance: "75 m via the garden path" },
     extras: ["Removable wheelchair seating", "Infrared hearing assistance", "Companion seating beside wheelchair spaces"],
-    steps: ["Follow the Main Walk east past the gardens", "Turn left around the building edge", "Continue to the theatre ramp"],
     surveyedOn: "15 August 2026",
   },
 };
