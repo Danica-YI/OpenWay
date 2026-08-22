@@ -155,6 +155,8 @@ export default function Home() {
   const [location, setLocation] = useState<LatLng>(DEMO_START);
   const [locationMessage, setLocationMessage] = useState("Demo starting point");
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loadingContributions, setLoadingContributions] = useState(false);
@@ -237,6 +239,7 @@ export default function Home() {
   }, []);
 
   const chooseBuilding = useCallback((id: string, tab: Tab = "details") => {
+    setMenuOpen(false);
     setSelectedId(id);
     setActiveTab(tab);
     setDetailOpen(true);
@@ -255,7 +258,11 @@ export default function Home() {
       if (!active || !mapElement.current) return;
 
       const map = L.map(mapElement.current, { zoomControl: false }).setView(DEFAULT_CENTER, 17);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      // On a phone the bottom of the map belongs to the profile sheet, so the
+      // zoom buttons join the locate button in a vertical stack on the right.
+      L.control
+        .zoom({ position: window.matchMedia("(max-width: 760px)").matches ? "topright" : "bottomright" })
+        .addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 20,
         attribution: "&copy; OpenStreetMap contributors",
@@ -510,6 +517,16 @@ export default function Home() {
     return () => { ignore = true; };
   }, [selectedId]);
 
+  // --- browse panel keyboard handling -------------------------------------
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   // --- modal keyboard handling --------------------------------------------
   useEffect(() => {
     if (!contributionOpen) return;
@@ -584,10 +601,23 @@ export default function Home() {
         <button className="report-button" type="button" onClick={openContribution} disabled={!selectedId}>
           <span aria-hidden="true">＋</span> {selectedId ? "Contribute accessibility info" : "Select a building first"}
         </button>
+
+        <button
+          className={menuOpen ? "menu-toggle open" : "menu-toggle"}
+          type="button"
+          aria-label={menuOpen ? "Close building list" : "Open building list"}
+          aria-expanded={menuOpen}
+          aria-controls="browse-panel"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+        </button>
       </header>
 
-      <section className={detailOpen && selected ? "workspace detail-open" : "workspace"} id="top">
-        <aside className="sidebar" aria-label="Buildings in view">
+      <section className={`workspace${detailOpen && selected ? " detail-open" : ""}${menuOpen ? " menu-open" : ""}`} id="top">
+        <aside className="sidebar" id="browse-panel" aria-label="Buildings in view">
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
             <h1>Every access detail, in one place.</h1>
@@ -670,8 +700,14 @@ export default function Home() {
           <div ref={mapElement} className="map" />
 
           <div className="map-top-controls">
-            <button className="locate-button" type="button" onClick={locateUser}>
-              <span aria-hidden="true">◎</span>
+            <button className="locate-button" type="button" onClick={locateUser} aria-label={`Use my location. ${locationMessage}`} title="Use my location">
+              <span aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+                  <path d="M12 1.5v3.2M12 19.3v3.2M1.5 12h3.2M19.3 12h3.2" />
+                </svg>
+              </span>
               <span><b>Use my location</b><small>{locationMessage}</small></span>
             </button>
             <div className="map-legend" role="note" aria-label="Map colour key">
@@ -685,14 +721,23 @@ export default function Home() {
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
 
           {detailOpen && selected && (
-            <article className="building-drawer" aria-live="polite">
+            <article className={sheetExpanded ? "building-drawer expanded" : "building-drawer"} aria-live="polite">
+              <button
+                className="sheet-handle"
+                type="button"
+                aria-label={sheetExpanded ? "Collapse building details" : "Expand building details"}
+                aria-expanded={sheetExpanded}
+                onClick={() => setSheetExpanded((open) => !open)}
+              >
+                <span aria-hidden="true" />
+              </button>
               <div className="drawer-header">
                 <div>
                   <span className="detail-type">BUILDING ACCESS PROFILE</span>
                   <h2>{displayName(selected)}</h2>
                   <p>{selected.kind}{selected.address ? ` · ${selected.address}` : ""}{selected.levels ? ` · ${selected.levels} levels` : ""}</p>
                 </div>
-                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); }}>×</button>
+                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); setSheetExpanded(false); }}>×</button>
               </div>
 
               <div className="profile-meta">
