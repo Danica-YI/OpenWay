@@ -144,6 +144,19 @@ function drawerBottomHeight(map: LeafletMap): number {
   return isBottomSheet ? Math.min(drawerRect.height, mapRect.height) : 0;
 }
 
+/**
+ * Where the bottom sheet's top edge falls inside the map container, or null on
+ * layouts where the drawer sits beside the map instead of over it.
+ */
+function sheetTopWithinMap(map: LeafletMap): number | null {
+  const drawerEl = document.querySelector(".building-drawer");
+  if (!drawerEl) return null;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const drawerRect = drawerEl.getBoundingClientRect();
+  if (drawerRect.width < mapRect.width * 0.7) return null;
+  return drawerRect.top - mapRect.top;
+}
+
 export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
@@ -647,6 +660,41 @@ export default function Home() {
     draw();
     return () => { cancelled = true; };
   }, [routeVisible, walkingRoute, selected, location, routeEntrance]);
+
+  // --- keep the building above the sheet ----------------------------------
+  // Framing happens once, when a building is picked. The sheet can grow after
+  // that — expanding it, or switching to a taller tab — and the building ends
+  // up behind it. Watch the sheet and nudge the map only when the building
+  // would actually be hidden, so it does not twitch on every content change.
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !selected || !detailOpen) return;
+    const drawerEl = document.querySelector(".building-drawer");
+    if (!drawerEl) return;
+
+    const centre = selected.center;
+    const keepInView = () => {
+      const current = mapInstance.current;
+      if (!current) return;
+      const sheetTop = sheetTopWithinMap(current);
+      if (sheetTop === null) return;
+
+      const MARGIN = 28;
+      const limit = sheetTop - MARGIN;
+      const topInset = 74; // clear of the legend and locate button
+      if (limit <= topInset) return; // sheet covers the map; nothing sensible to show
+
+      const point = current.latLngToContainerPoint(centre);
+      if (point.y <= limit && point.y >= topInset) return;
+
+      const desired = (topInset + limit) / 2;
+      current.panBy([0, Math.round(point.y - desired)], { animate: true, duration: 0.3 });
+    };
+
+    const observer = new ResizeObserver(keepInView);
+    observer.observe(drawerEl);
+    return () => observer.disconnect();
+  }, [selected, detailOpen]);
 
   // --- mark the entrance on the map ---------------------------------------
   useEffect(() => {
