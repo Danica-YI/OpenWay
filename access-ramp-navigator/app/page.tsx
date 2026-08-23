@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
+import type { Circle, LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
 import { FACILITIES, facilityFor, facilityGlyphMarkup, type Facility } from "../lib/facilities";
@@ -150,6 +150,23 @@ function bboxContains(outer: BBox, inner: BBox): boolean {
   return outer.south <= inner.south && outer.west <= inner.west && outer.north >= inner.north && outer.east >= inner.east;
 }
 
+/**
+ * Say how good the fix is rather than just claiming "current location". A
+ * browser's first fix often comes from wifi and can be hundreds of metres out,
+ * which is exactly the case where a confident label misleads.
+ */
+function describeFix(accuracy: number): string {
+  if (!Number.isFinite(accuracy)) return "Current location";
+  const metres = Math.round(accuracy);
+  return accuracy > 100 ? `Approximate location · ±${metres} m` : `Current location · ±${metres} m`;
+}
+
+function describeLocationError(error: GeolocationPositionError): string {
+  if (error.code === error.PERMISSION_DENIED) return "Permission not granted — using demo start";
+  if (error.code === error.TIMEOUT) return "Still looking — using demo start";
+  return "Location unavailable — using demo start";
+}
+
 function currentPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Location is unavailable on this device."));
@@ -225,6 +242,11 @@ export default function Home() {
   const routeLine = useRef<Polyline | null>(null);
   const routeHalo = useRef<Polyline | null>(null);
   const userMarker = useRef<Marker | null>(null);
+  const userAccuracyCircle = useRef<Circle | null>(null);
+  /** Centre on the visitor once, not on every fix the watch delivers. */
+  const hasCentredOnUser = useRef(false);
+  /** They took the map somewhere themselves; do not yank it back. */
+  const userMovedMap = useRef(false);
   const draftPinMarker = useRef<Marker | null>(null);
   const categoryRef = useRef("Ramp");
   const entranceMarker = useRef<Marker | null>(null);
@@ -249,6 +271,8 @@ export default function Home() {
   const [walkingRoute, setWalkingRoute] = useState<WalkingRoute | null>(null);
   const [location, setLocation] = useState<LatLng>(DEMO_START);
   const [locationMessage, setLocationMessage] = useState("Demo starting point");
+  /** Null until a real fix arrives — the demo start is not a measurement. */
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetExpanded, setSheetExpanded] = useState(false);
@@ -290,6 +314,9 @@ export default function Home() {
 
   // Derived, not stored: the viewport already tells us whether we are too far out.
   const needsZoom = viewport !== null && viewport.zoom < MIN_ZOOM;
+  // The map-creation effect calls syncViewport(), so a viewport means Leaflet
+  // exists. Derived rather than a second piece of state that could disagree.
+  const mapReady = viewport !== null;
 
   const selected = useMemo(
     () => buildings.find((building) => building.id === selectedId) ?? null,
@@ -659,6 +686,8 @@ export default function Home() {
         });
       };
       map.on("moveend", syncViewport);
+      // flyTo does not fire dragstart, so this only catches a real drag.
+      map.on("dragstart", () => { userMovedMap.current = true; });
       syncViewport();
 
       mapInstance.current = map;
@@ -958,6 +987,84 @@ export default function Home() {
     drawEntrance();
   }, [routeEntrance, detailOpen]);
 
+  // --- follow the visitor's real position ---------------------------------
+  // Until now the map planted a fixed demo pin and only asked the browser for a
+  // position when the locate button was pressed, so every distance on screen
+  // was measured from Wickham Street until someone tapped. Ask on load instead,
+  // and keep watching: the first fix is often a coarse wifi one and the GPS
+  // refinement arrives seconds later.
+  useEffect(() => {
+    let watch: number | null = null;
+    let cancelled = false;
+    // The guards report through state, so they run in an async body rather than
+    // synchronously in the effect, matching how the other loaders here do it.
+    void (async () => {
+      if (cancelled) return;
+      if (!navigator.geolocation) {
+        setLocationMessage("Location unavailable — using demo start");
+        return;
+      }
+      // Browsers refuse geolocation outside a secure context, which is what
+      // happens when a phone opens the dev server over the LAN address.
+      if (!window.isSecureContext) {
+        setLocationMessage("Needs https on a phone — using demo start");
+        return;
+      }
+      setLocationMessage("Finding your location…");
+      const id = navigator.geolocation.watchPosition(
+        ({ coords }) => {
+          setLocation([coords.latitude, coords.longitude]);
+          setLocationAccuracy(coords.accuracy);
+          setLocationMessage(describeFix(coords.accuracy));
+        },
+        (error) => setLocationMessage(describeLocationError(error)),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
+      );
+      if (cancelled) navigator.geolocation.clearWatch(id);
+      else watch = id;
+    })();
+    return () => {
+      cancelled = true;
+      if (watch !== null) navigator.geolocation.clearWatch(watch);
+    };
+  }, []);
+
+  // Draw the fix once Leaflet exists, so a position that arrives before the map
+  // is ready is not dropped. The halo is the browser's own accuracy radius —
+  // when the dot looks wrong, this shows whether the fix was ever confident.
+  useEffect(() => {
+    if (!mapReady || locationAccuracy === null) return;
+    let ignore = false;
+    void (async () => {
+      const map = mapInstance.current;
+      if (!map) return;
+      const L = await import("leaflet");
+      if (ignore || !mapInstance.current) return;
+      userMarker.current?.setLatLng(location);
+      if (userAccuracyCircle.current) {
+        userAccuracyCircle.current.setLatLng(location).setRadius(locationAccuracy);
+      } else {
+        userAccuracyCircle.current = L.circle(location, {
+          radius: locationAccuracy,
+          color: "#176dde",
+          weight: 1,
+          opacity: 0.5,
+          fillColor: "#176dde",
+          fillOpacity: 0.1,
+          interactive: false,
+        }).addTo(map);
+      }
+      if (hasCentredOnUser.current) return;
+      hasCentredOnUser.current = true;
+      // Centre on the first real fix, unless they are already reading about a
+      // building or have dragged the map somewhere themselves.
+      if (!userMovedMap.current && !selectedId) {
+        map.flyTo(location, Math.max(map.getZoom(), 18), { duration: 0.65 });
+      }
+    })();
+    return () => { ignore = true; };
+  }, [mapReady, location, locationAccuracy, selectedId]);
+
   // --- community reports for the selected building ------------------------
   useEffect(() => {
     let ignore = false;
@@ -1179,25 +1286,38 @@ export default function Home() {
     }
   }
 
+  /** Take me back to my dot. */
   function locateUser() {
+    const map = mapInstance.current;
+    // The watch is already delivering fresh positions, so the button's job is
+    // to return to the newest one — immediately, rather than sitting on
+    // "Finding your location…" while a redundant request runs.
+    if (locationAccuracy !== null && map) {
+      hasCentredOnUser.current = true;
+      map.flyTo(location, Math.max(map.getZoom(), 18), { duration: 0.65 });
+      return;
+    }
     if (!navigator.geolocation) {
       setLocationMessage("Location unavailable — using demo start");
       return;
     }
+    if (!window.isSecureContext) {
+      setLocationMessage("Needs https on a phone — using demo start");
+      return;
+    }
+    // No fix yet: ask once more. This is also the retry after someone declines
+    // and then allows location in their browser settings.
     setLocationMessage("Finding your location…");
     navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        const next: LatLng = [coords.latitude, coords.longitude];
-        setLocation(next);
-        setLocationMessage("Current location");
-        const L = await import("leaflet");
-        userMarker.current?.setLatLng(next).setIcon(
-          L.divIcon({ className: "custom-marker", html: '<div class="user-pin"><span></span></div>', iconSize: [34, 34], iconAnchor: [17, 17] }),
-        );
-        mapInstance.current?.flyTo(next, 18, { duration: 0.65 });
+      ({ coords }) => {
+        setLocation([coords.latitude, coords.longitude]);
+        setLocationAccuracy(coords.accuracy);
+        setLocationMessage(describeFix(coords.accuracy));
       },
-      () => setLocationMessage("Permission not granted — using demo start"),
-      { enableHighAccuracy: true, timeout: 8000 },
+      (error) => setLocationMessage(describeLocationError(error)),
+      // maximumAge was unset before, so the browser could hand back a position
+      // it had cached earlier — a fix that is stale, not merely coarse.
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
     );
   }
 
