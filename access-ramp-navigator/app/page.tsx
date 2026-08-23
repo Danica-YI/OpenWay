@@ -1338,8 +1338,16 @@ export default function Home() {
               <label>Exact location or level
                 <input required maxLength={140} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. East side, Level 2 beside the lift" />
               </label>
-              <label>Detailed accessibility information
-                <textarea required maxLength={800} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} placeholder="Include measurements, the side of the building, door type, condition or another practical detail." rows={5} />
+              <label><span>Detailed accessibility information <small>(at least 10 characters)</small></span>
+                <textarea
+                  required
+                  minLength={10}
+                  maxLength={800}
+                  value={form.details}
+                  onChange={(e) => setForm({ ...form, details: e.target.value })}
+                  placeholder="Include measurements, the side of the building, door type, condition or another practical detail."
+                  rows={5}
+                />
               </label>
               <div className="form-guidance">
                 <span aria-hidden="true">✓</span>
