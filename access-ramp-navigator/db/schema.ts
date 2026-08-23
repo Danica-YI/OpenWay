@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
@@ -37,6 +38,8 @@ export const accessibilityContributions = sqliteTable("accessibility_contributio
   anonymous: integer("anonymous", { mode: "boolean" }).notNull().default(false),
   /** Legacy display name for rows with no account behind them. */
   contributor: text("contributor").notNull().default("Community member"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   status: text("status").notNull().default("pending_review"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 }, (table) => [

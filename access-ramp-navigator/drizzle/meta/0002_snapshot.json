@@ -1,6 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
+  "id": "ca90c64f-e78e-459d-9411-4675b94d7cca",
   "id": "7b6e7247-5ca5-41dc-b4a2-bf13174e136c",
   "prevId": "61880c00-9fb1-4e35-9c11-8bae9ac19db0",
   "tables": {
@@ -71,6 +72,20 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'Community member'"
+        },
+        "latitude": {
+          "name": "latitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "longitude": {
+          "name": "longitude",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "status": {
           "name": "status",

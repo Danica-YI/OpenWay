@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
+import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
 import type { WalkingRoute } from "../lib/routing";
@@ -33,6 +33,8 @@ type Contribution = {
   location: string;
   details: string;
   contributor: string;
+  latitude: number | null;
+  longitude: number | null;
   status: string;
   createdAt: string;
   mine?: boolean;
@@ -146,10 +148,12 @@ export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
   const shapeLayer = useRef<LayerGroup | null>(null);
+  const accessPointLayer = useRef<LayerGroup | null>(null);
   const shapes = useRef<Map<string, Polygon>>(new Map());
   const routeLine = useRef<Polyline | null>(null);
   const routeHalo = useRef<Polyline | null>(null);
   const userMarker = useRef<Marker | null>(null);
+  const draftPinMarker = useRef<Marker | null>(null);
   const requestCache = useRef<Map<string, MapBuilding[]>>(new Map());
   const loadedBBox = useRef<BBox | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -183,9 +187,19 @@ export default function Home() {
   const [loadingMine, setLoadingMine] = useState(false);
   const [toast, setToast] = useState("");
   const [contributionOpen, setContributionOpen] = useState(false);
+  const [pinMode, setPinMode] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loadingContributions, setLoadingContributions] = useState(false);
   const [submitState, setSubmitState] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState({
+    category: "Ramp",
+    location: "",
+    details: "",
+    contributor: "",
+    latitude: null as number | null,
+    longitude: null as number | null,
+  });
   const [form, setForm] = useState({ category: "Ramp", location: "", details: "", anonymous: false });
 
   // Derived, not stored: the viewport already tells us whether we are too far out.
@@ -257,11 +271,52 @@ export default function Home() {
       .sort((a, b) => a.metres - b.metres);
   }, [filter, query, withDistance]);
 
+  const removeDraftPin = useCallback(() => {
+    draftPinMarker.current?.remove();
+    draftPinMarker.current = null;
+  }, []);
+
+  const placeDraftPin = useCallback(async (latitude: number, longitude: number) => {
+    const map = mapInstance.current;
+    if (!map) return;
+    const L = await import("leaflet");
+    const icon = L.divIcon({
+      className: "custom-marker",
+      html: '<div class="draft-access-pin"><span>♿</span></div>',
+      iconSize: [46, 54],
+      iconAnchor: [23, 52],
+    });
+    removeDraftPin();
+    draftPinMarker.current = L.marker([latitude, longitude], {
+      icon,
+      draggable: true,
+      keyboard: true,
+      title: "Drag to adjust the exact accessibility point",
+      zIndexOffset: 1200,
+    })
+      .addTo(map)
+      .on("dragend", (event) => {
+        const point = (event.target as Marker).getLatLng();
+        setForm((current) => ({ ...current, latitude: point.lat, longitude: point.lng }));
+      });
+    setForm((current) => ({ ...current, latitude, longitude }));
+  }, [removeDraftPin]);
+
+  const closeContribution = useCallback(() => {
+    setContributionOpen(false);
+    setPinMode(false);
+    removeDraftPin();
+  }, [removeDraftPin]);
+
   const openContribution = useCallback(() => {
+    removeDraftPin();
+    setPinMode(false);
+    setForm({ category: "Ramp", location: "", details: "", contributor: "", latitude: null, longitude: null });
     setForm({ category: "Ramp", location: "", details: "", anonymous: false });
     setSubmitState("idle");
+    setFormError("");
     setContributionOpen(true);
-  }, []);
+  }, [removeDraftPin]);
 
   const chooseBuilding = useCallback((id: string, tab: Tab = "details") => {
     setMenuOpen(false);
@@ -270,6 +325,31 @@ export default function Home() {
     setDetailOpen(true);
     setRouteVisible(tab === "route");
   }, []);
+
+  function startPinPlacement() {
+    if (!selected || !mapInstance.current) return;
+    setFormError("");
+    setContributionOpen(false);
+    setDetailOpen(false);
+    setRouteVisible(false);
+    setPinMode(true);
+    mapInstance.current.flyTo(selected.center, 20, { duration: 0.65 });
+  }
+
+  function confirmPinPlacement() {
+    if (form.latitude === null || form.longitude === null) return;
+    setPinMode(false);
+    setDetailOpen(true);
+    setContributionOpen(true);
+  }
+
+  function cancelPinPlacement() {
+    removeDraftPin();
+    setForm((current) => ({ ...current, latitude: null, longitude: null }));
+    setPinMode(false);
+    setDetailOpen(true);
+    setContributionOpen(true);
+  }
 
 
   // --- map bootstrap -------------------------------------------------------
@@ -282,6 +362,9 @@ export default function Home() {
       const L = await import("leaflet");
       if (!active || !mapElement.current) return;
 
+      const map = L.map(mapElement.current, { zoomControl: false, zoomSnap: 0.5 }).setView(DEFAULT_CENTER, 17);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
       const map = L.map(mapElement.current, { zoomControl: false }).setView(DEFAULT_CENTER, 17);
       // On a phone the bottom of the map belongs to the profile sheet, so the
       // zoom buttons join the locate button in a vertical stack on the right.
@@ -290,10 +373,12 @@ export default function Home() {
         .addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 20,
-        attribution: "&copy; OpenStreetMap contributors",
+        subdomains: "abcd",
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
       }).addTo(map);
 
       shapeLayer.current = L.layerGroup().addTo(map);
+      accessPointLayer.current = L.layerGroup().addTo(map);
 
       const userIcon = L.divIcon({
         className: "custom-marker",
@@ -327,9 +412,26 @@ export default function Home() {
       releaseObserver?.();
       mapInstance.current?.remove();
       mapInstance.current = null;
+      accessPointLayer.current = null;
+      draftPinMarker.current = null;
       shapeStore.clear();
     };
   }, []);
+
+  // --- precise accessibility-point placement ------------------------------
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !pinMode) return;
+    map.getContainer().classList.add("pin-cursor");
+    const handleMapClick = (event: LeafletMouseEvent) => {
+      void placeDraftPin(event.latlng.lat, event.latlng.lng);
+    };
+    map.on("click", handleMapClick);
+    return () => {
+      map.getContainer().classList.remove("pin-cursor");
+      map.off("click", handleMapClick);
+    };
+  }, [pinMode, placeDraftPin]);
 
   // --- load buildings for the viewport ------------------------------------
   useEffect(() => {
@@ -421,15 +523,19 @@ export default function Home() {
           fillColor: style.fill,
           fillOpacity: isSelected ? 0.45 : style.fillOpacity,
           dashArray: isSelected ? undefined : style.dashArray,
+          bubblingMouseEvents: false,
         })
           .bindTooltip(`${displayName(building)} — ${STATUS_LABEL[status]}`, { sticky: true })
-          .on("click", () => chooseBuilding(building.id));
+          .on("click", (event) => {
+            if (pinMode) void placeDraftPin(event.latlng.lat, event.latlng.lng);
+            else chooseBuilding(building.id);
+          });
         layer.addLayer(polygon);
         shapes.current.set(building.id, polygon);
       }
     }
     draw();
-  }, [chooseBuilding, selectedId, withDistance]);
+  }, [chooseBuilding, pinMode, placeDraftPin, selectedId, withDistance]);
 
   // --- pan to the selected building ---------------------------------------
   useEffect(() => {
@@ -528,6 +634,7 @@ export default function Home() {
         if (!ignore) setContributions([]);
         return;
       }
+      setContributions([]);
       setLoadingContributions(true);
       try {
         const response = await fetch(`/api/contributions?buildingId=${encodeURIComponent(selectedId)}`);
@@ -542,6 +649,40 @@ export default function Home() {
     return () => { ignore = true; };
   }, [selectedId]);
 
+  // --- show saved accessibility points for the selected building -----------
+  useEffect(() => {
+    let ignore = false;
+    async function drawAccessPoints() {
+      const layer = accessPointLayer.current;
+      if (!layer) return;
+      layer.clearLayers();
+      const pinned = contributions.filter((item) => item.latitude !== null && item.longitude !== null);
+      if (!pinned.length) return;
+      const L = await import("leaflet");
+      if (ignore) return;
+      for (const item of pinned) {
+        const icon = L.divIcon({
+          className: "custom-marker",
+          html: '<div class="access-point-pin"><span>♿</span></div>',
+          iconSize: [34, 42],
+          iconAnchor: [17, 40],
+        });
+        const marker = L.marker([item.latitude!, item.longitude!], {
+          icon,
+          title: `${item.category}: ${item.location}`,
+          zIndexOffset: 800,
+        })
+          .bindTooltip(`${item.category} · ${item.location}`, { direction: "top", offset: [0, -28] })
+          .on("click", () => {
+            setActiveTab("community");
+            setDetailOpen(true);
+          });
+        layer.addLayer(marker);
+      }
+    }
+    void drawAccessPoints();
+    return () => { ignore = true; };
+  }, [contributions]);
   // --- who is signed in ---------------------------------------------------
   useEffect(() => {
     let ignore = false;
@@ -577,12 +718,12 @@ export default function Home() {
   useEffect(() => {
     if (!contributionOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContributionOpen(false);
+      if (event.key === "Escape") closeContribution();
     };
     window.addEventListener("keydown", onKey);
     modalRef.current?.querySelector<HTMLElement>("select, input, textarea")?.focus();
     return () => window.removeEventListener("keydown", onKey);
-  }, [contributionOpen]);
+  }, [closeContribution, contributionOpen]);
 
   function openAuth(mode: "signin" | "register") {
     setAuthMode(mode);
@@ -659,7 +800,13 @@ export default function Home() {
   async function submitContribution(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedId) return;
+    if (form.latitude === null || form.longitude === null) {
+      setSubmitState("error");
+      setFormError("Place the exact accessibility point on the map before submitting.");
+      return;
+    }
     setSubmitState("saving");
+    setFormError("");
     try {
       const response = await fetch("/api/contributions", {
         method: "POST",
@@ -673,9 +820,11 @@ export default function Home() {
       setCounts((current) => ({ ...current, [selectedId]: (current[selectedId] ?? 0) + 1 }));
       setActiveTab("community");
       setDetailOpen(true);
+      removeDraftPin();
       window.setTimeout(() => setContributionOpen(false), 900);
-    } catch {
+    } catch (error) {
       setSubmitState("error");
+      setFormError(error instanceof Error ? error.message : "The contribution could not be saved.");
     }
   }
 
@@ -868,6 +1017,26 @@ export default function Home() {
 
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
 
+          {pinMode && selected && (
+            <section className="pin-placement-bar" aria-live="polite">
+              <div className="pin-placement-copy">
+                <span className="pin-placement-icon" aria-hidden="true">⌖</span>
+                <div>
+                  <b>{form.latitude === null ? "Click the exact accessibility point" : "Pin placed — drag it to refine"}</b>
+                  <small>
+                    {form.latitude === null
+                      ? `Zoomed in on ${displayName(selected)}. Click beside the building at the entrance, ramp or other feature.`
+                      : `${form.latitude.toFixed(7)}, ${form.longitude!.toFixed(7)}`}
+                  </small>
+                </div>
+              </div>
+              <div className="pin-placement-actions">
+                <button type="button" className="secondary-button" onClick={cancelPinPlacement}>Cancel</button>
+                <button type="button" className="primary-action" disabled={form.latitude === null} onClick={confirmPinPlacement}>Use this pin</button>
+              </div>
+            </section>
+          )}
+
           {detailOpen && selected && (
             <article className={sheetExpanded ? "building-drawer expanded" : "building-drawer"} aria-live="polite">
               <button
@@ -970,6 +1139,9 @@ export default function Home() {
                             <div><b>{item.category}</b><span>Unverified</span></div>
                             <strong>{item.location}</strong>
                             <p>{item.details}</p>
+                            {item.latitude !== null && item.longitude !== null && (
+                              <p className="saved-coordinate">⌖ Pinned at {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</p>
+                            )}
                             <small>Shared by {item.contributor} · {new Date(item.createdAt.replace(" ", "T") + "Z").toLocaleDateString()}</small>
                           </article>
                         ))}
@@ -996,7 +1168,7 @@ export default function Home() {
       </section>
 
       {contributionOpen && selected && (
-        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setContributionOpen(false); }}>
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeContribution(); }}>
           <section className="contribution-modal" role="dialog" aria-modal="true" aria-labelledby="contribution-title" ref={modalRef}>
             <div className="modal-header">
               <div>
@@ -1004,9 +1176,31 @@ export default function Home() {
                 <h2 id="contribution-title">Add an accessibility detail</h2>
                 <p>You are adding information about <b>{displayName(selected)}</b>.</p>
               </div>
-              <button className="close-detail" onClick={() => setContributionOpen(false)} aria-label="Close contribution form">×</button>
+              <button className="close-detail" onClick={closeContribution} aria-label="Close contribution form">×</button>
             </div>
             <form onSubmit={submitContribution}>
+              <div className={form.latitude === null ? "pin-field" : "pin-field placed"}>
+                <span className="pin-field-icon" aria-hidden="true">⌖</span>
+                <div>
+                  <b>{form.latitude === null ? "Exact map pin required" : "Exact accessibility point pinned"}</b>
+                  <small>
+                    {form.latitude === null
+                      ? "Place the marker at the entrance, ramp, toilet or other feature—not at the building centre."
+                      : `${form.latitude.toFixed(7)}, ${form.longitude!.toFixed(7)}`}
+                  </small>
+                </div>
+                <button type="button" onClick={startPinPlacement}>{form.latitude === null ? "Place pin on map" : "Adjust pin"}</button>
+              </div>
+              <div className="form-row">
+                <label>Accessibility feature
+                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                    <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
+                    <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
+                  </select>
+                </label>
+                <label><span>Your name <small>(optional)</small></span>
+                  <input value={form.contributor} maxLength={60} onChange={(e) => setForm({ ...form, contributor: e.target.value })} placeholder="Community member" />
+                </label>
               <label>Accessibility feature
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
@@ -1052,10 +1246,10 @@ export default function Home() {
                 <span aria-hidden="true">✓</span>
                 <p>Your report is stored as <b>unverified</b> until reviewed. Do not include private or sensitive information.</p>
               </div>
-              {submitState === "error" && <p className="form-error">The information could not be saved. Please check the fields and try again.</p>}
+              {submitState === "error" && <p className="form-error">{formError || "The information could not be saved. Please check the fields and try again."}</p>}
               {submitState === "success" && <p className="form-success">Thank you — your information has been saved for review.</p>}
               <div className="modal-actions">
-                <button type="button" className="secondary-button" onClick={() => setContributionOpen(false)}>Cancel</button>
+                <button type="button" className="secondary-button" onClick={closeContribution}>Cancel</button>
                 <button className="primary-action" disabled={submitState === "saving"}>{submitState === "saving" ? "Saving…" : "Submit information"}</button>
               </div>
             </form>

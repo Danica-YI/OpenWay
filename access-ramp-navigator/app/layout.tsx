@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "OpenWay",
   description: "Detailed building accessibility profiles covering entrances, ramps, toilets, lifts, parking, routes and community reports.",
+  other: { "codex-preview": "development" },
   openGraph: {
     title: "OpenWay",
     description: "Know the entrance, ramp, toilet, lift and route before you arrive.",

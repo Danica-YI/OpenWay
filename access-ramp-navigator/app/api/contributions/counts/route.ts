@@ -17,6 +17,8 @@ export async function POST(request: Request) {
       : [];
     if (!ids.length) return Response.json({ counts: {} });
 
+    const db = await getDb();
+    const rows = await db
     await ensureSchema();
 
     const rows = await getDb()
