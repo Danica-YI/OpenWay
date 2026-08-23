@@ -71,6 +71,15 @@ async function bootstrap(): Promise<void> {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
     d1.prepare("CREATE INDEX IF NOT EXISTS contribution_building_idx ON accessibility_contributions (building_id, created_at)"),
+    d1.prepare(`CREATE TABLE IF NOT EXISTS contribution_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contribution_id INTEGER NOT NULL,
+      user_id INTEGER,
+      reason TEXT NOT NULL,
+      details TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    d1.prepare("CREATE INDEX IF NOT EXISTS report_contribution_idx ON contribution_reports (contribution_id)"),
   ]);
 
   // Columns added after the first release. SQLite has no ADD COLUMN IF NOT

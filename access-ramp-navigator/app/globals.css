@@ -33,13 +33,6 @@
 .location-icon.status-reported{background:#a85f05;color:#fff}
 .location-icon.status-unknown{background:#e6ebef;color:#7b8a97}
 
-.map-legend{display:flex;flex-wrap:wrap;align-items:center;gap:12px;background:rgba(255,255,255,.96);border:1px solid #d7deda;border-radius:12px;padding:9px 13px;font-size:12px;color:var(--muted);box-shadow:0 6px 18px rgba(18,40,59,.09)}
-.map-legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-.swatch{width:13px;height:13px;border-radius:4px;border:2px solid}
-.swatch.surveyed{background:#20a695;border-color:#087f73}
-.swatch.mapped{background:#93c0fb;border-color:#2563eb}
-.swatch.reported{background:#f5cf80;border-color:#a85f05}
-.swatch.unknown{background:#e2e8f0;border-color:#94a3b8;border-style:dashed}
 
 .fetch-status{position:absolute;top:84px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(18,40,59,.92);color:#fff;font-size:12.5px;font-weight:650;padding:7px 15px;border-radius:999px;pointer-events:none}
 
@@ -87,6 +80,24 @@
 .checkbox{display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:9px;font-size:12px;cursor:pointer}
 .checkbox input{width:16px;height:16px;flex:0 0 auto;accent-color:var(--teal)}
 .link-button{border:0;background:none;padding:0;color:var(--teal-dark);font-weight:750;text-decoration:underline;cursor:pointer;font-size:inherit}
+.link-button.danger{color:#a3392c}
+.danger-button{border:1px solid #e0b3ac;border-radius:7px;background:#fff3f1;color:#933124;padding:5px 8px;font-size:9px;font-weight:800;cursor:pointer}
+.danger-button:hover{background:#ffe6e2;border-color:#c9776c}
+.moderation-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid #edf0f0;font-size:9px}
+.flag-count{color:var(--amber);background:#fff3dd;padding:3px 6px;border-radius:5px;font-weight:800}
+.remove-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:7px;color:#933124;font-weight:800}
+.moderator-note{margin:0 0 11px;padding:8px 9px;border-radius:8px;background:#eef3f7;color:#3c5567;font-size:8px;line-height:1.5}
+.moderator-note b{display:block;color:var(--navy);font-size:9px;margin-bottom:2px}
+.flag-notice{margin:0 0 5px;color:#8a5a12;background:#fff6e6;border-radius:6px;padding:5px 7px;font-size:8.5px;line-height:1.4}
+.report-form{margin-top:9px;padding:10px;border:1px solid #d8e1e2;border-radius:9px;background:#fbfcfb;display:flex;flex-direction:column;gap:7px}
+.report-form>b{font-size:9.5px;color:var(--navy)}
+.report-form textarea{width:100%;border:1px solid #cbd7da;border-radius:8px;background:#fff;padding:8px;font-size:9.5px;outline:0;color:var(--ink);resize:vertical}
+.report-form textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(8,127,115,.11)}
+.reason-row{display:flex;flex-wrap:wrap;gap:5px}
+.reason{border:1px solid #ccd7da;border-radius:999px;background:#fff;padding:5px 9px;font-size:8.5px;font-weight:750;cursor:pointer}
+.reason:hover{border-color:var(--teal)}
+.reason.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.report-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;font-size:9px}
 
 .profile-summary{display:flex;align-items:baseline;gap:7px;margin:2px 0 14px;padding:11px 13px;border-radius:12px;background:var(--pale)}
 .profile-summary strong{font-size:22px;color:var(--teal-dark);font-family:Georgia,serif}
@@ -160,7 +171,6 @@
     padding:0;justify-content:center;border-radius:12px}
   .locate-button>span:last-child{display:none}
   .locate-button>span:first-child{width:26px;height:26px;background:transparent;color:var(--teal);font-size:23px}
-  .map-legend{position:absolute;z-index:500;top:10px;left:10px;gap:7px;padding:6px 9px;font-size:10px}
   /* Clear of the attribution strip below it and the zoom buttons to its right. */
   .prototype-note{left:10px;right:auto;bottom:24px;max-width:60%;text-align:left;font-size:9.5px;line-height:1.4}
   .fetch-status{top:auto;bottom:64px}
@@ -196,8 +206,6 @@
 
 @media(max-width:440px){
   .sidebar-heading h1{font-size:21px}
-  .map-legend{font-size:9.5px;gap:6px;padding:5px 8px}
-  .swatch{width:11px;height:11px}
 }
 
 /* Up to this width a fixed sidebar plus the drawer leave almost no map. Give
@@ -213,7 +221,6 @@
   .sidebar-heading{display:none}
   .workspace{grid-template-columns:270px 1fr}
   .building-drawer{width:min(330px,calc(100% - 24px));right:12px;top:12px;bottom:12px}
-  .map-legend{display:none}
   .locate-button{padding:7px 10px 7px 8px}
   /* Keep the OpenStreetMap credit out from behind the drawer. */
   .workspace.detail-open .leaflet-control-attribution{margin-right:342px}
