@@ -29,6 +29,27 @@
       "when": 1787444586492,
       "tag": "0002_watery_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787444586493,
+      "tag": "0003_lean_susan_delgado",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787444586494,
+      "tag": "0004_complete_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787454034496,
+      "tag": "0006_cold_franklin_storm",
+      "breakpoints": true
     }
   ]
 }
