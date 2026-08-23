@@ -22,6 +22,7 @@ export async function GET(request: Request) {
         details: accessibilityContributions.details,
         status: accessibilityContributions.status,
         anonymous: accessibilityContributions.anonymous,
+        photoKey: accessibilityContributions.photoKey,
         createdAt: accessibilityContributions.createdAt,
       })
       .from(accessibilityContributions)
@@ -29,7 +30,12 @@ export async function GET(request: Request) {
       .orderBy(desc(accessibilityContributions.createdAt), desc(accessibilityContributions.id))
       .limit(100);
 
-    return Response.json({ contributions });
+    return Response.json({
+      contributions: contributions.map(({ photoKey, ...item }) => ({
+        ...item,
+        photoUrl: photoKey ? `/api/contributions/photo?id=${item.id}` : null,
+      })),
+    });
   } catch {
     return Response.json({ error: "Your contributions are temporarily unavailable" }, { status: 500 });
   }

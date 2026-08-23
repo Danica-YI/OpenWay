@@ -41,6 +41,7 @@ type MyContribution = {
   details: string;
   status: string;
   anonymous: boolean;
+  photoUrl: string | null;
   createdAt: string;
 };
 
@@ -53,9 +54,23 @@ type Contribution = {
   contributor: string;
   latitude: number | null;
   longitude: number | null;
+  photoUrl: string | null;
+  photoLatitude: number | null;
+  photoLongitude: number | null;
+  photoAccuracy: number | null;
+  photoCapturedAt: string | null;
   status: string;
   createdAt: string;
   mine?: boolean;
+};
+
+type CapturedPhoto = {
+  blob: Blob;
+  previewUrl: string;
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  capturedAt: string;
 };
 
 // --- Demo venue ----------------------------------------------------------
@@ -131,6 +146,28 @@ function bboxContains(outer: BBox, inner: BBox): boolean {
   return outer.south <= inner.south && outer.west <= inner.west && outer.north >= inner.north && outer.east >= inner.east;
 }
 
+function currentPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Location is unavailable on this device."));
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 });
+  });
+}
+
+/** Canvas capture creates a fresh JPEG with no EXIF/device metadata. */
+async function captureCameraFrame(video: HTMLVideoElement): Promise<Blob> {
+  if (!video.videoWidth || !video.videoHeight) throw new Error("The camera is not ready yet.");
+  const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("This browser cannot capture the camera frame.");
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+  if (!blob) throw new Error("This browser cannot capture the camera frame.");
+  return blob;
+}
+
 /**
  * The building drawer overlays the right side of the map (up to ~470px) on
  * wider viewports, but stacks below it as a bottom sheet on narrow ones. Any
@@ -190,6 +227,8 @@ export default function Home() {
   const requestCache = useRef<Map<string, MapBuilding[]>>(new Map());
   const loadedBBox = useRef<BBox | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [buildings, setBuildings] = useState<MapBuilding[]>([]);
@@ -225,6 +264,9 @@ export default function Home() {
   const [loadingContributions, setLoadingContributions] = useState(false);
   const [submitState, setSubmitState] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [formError, setFormError] = useState("");
+  const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
+  const [photoState, setPhotoState] = useState<"idle" | "processing">("idle");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [form, setForm] = useState({
     category: "Ramp",
     location: "",
@@ -386,16 +428,82 @@ export default function Home() {
     setContributionOpen(false);
     setPinMode(false);
     removeDraftPin();
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
+    setCapturedPhoto((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
   }, [removeDraftPin]);
 
   const openContribution = useCallback(() => {
     removeDraftPin();
     setPinMode(false);
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
     setForm({ category: "Ramp", location: "", details: "", anonymous: false, latitude: null, longitude: null });
+    setCapturedPhoto((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
     setSubmitState("idle");
     setFormError("");
     setContributionOpen(true);
   }, [removeDraftPin]);
+
+  async function openCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setFormError("A secure browser with camera access is required to take a photo.");
+      return;
+    }
+    setFormError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+      window.setTimeout(() => {
+        if (cameraVideoRef.current) cameraVideoRef.current.srcObject = stream;
+      }, 0);
+    } catch {
+      setFormError("Allow camera access to take a new accessibility photo.");
+    }
+  }
+
+  function stopCamera() {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    setCameraOpen(false);
+  }
+
+  async function takeCameraPhoto() {
+    const video = cameraVideoRef.current;
+    if (!video) return;
+    setPhotoState("processing");
+    setFormError("");
+    try {
+      const [blob, position] = await Promise.all([captureCameraFrame(video), currentPosition()]);
+      const next: CapturedPhoto = {
+        blob,
+        previewUrl: URL.createObjectURL(blob),
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        capturedAt: new Date().toISOString(),
+      };
+      setCapturedPhoto((current) => {
+        if (current) URL.revokeObjectURL(current.previewUrl);
+        return next;
+      });
+      await placeDraftPin(position.coords.latitude, position.coords.longitude);
+      stopCamera();
+    } catch {
+      setFormError("Allow precise location access so the camera photo can be geo-tagged, then try again.");
+    } finally {
+      setPhotoState("idle");
+    }
+  }
 
   const chooseBuilding = useCallback((id: string, tab: Tab = "details") => {
     setMenuOpen(false);
@@ -960,10 +1068,25 @@ export default function Home() {
     setSubmitState("saving");
     setFormError("");
     try {
+      const body = new FormData();
+      body.set("buildingId", selectedId);
+      body.set("buildingName", selected ? displayName(selected) : "");
+      body.set("category", form.category);
+      body.set("location", form.location);
+      body.set("details", form.details);
+      body.set("anonymous", String(form.anonymous));
+      body.set("latitude", String(form.latitude));
+      body.set("longitude", String(form.longitude));
+      if (capturedPhoto) {
+        body.set("photo", capturedPhoto.blob, "camera-capture.jpg");
+        body.set("photoLatitude", String(capturedPhoto.latitude));
+        body.set("photoLongitude", String(capturedPhoto.longitude));
+        body.set("photoAccuracy", String(capturedPhoto.accuracy));
+        body.set("photoCapturedAt", capturedPhoto.capturedAt);
+      }
       const response = await fetch("/api/contributions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, buildingId: selectedId, buildingName: selected ? displayName(selected) : null }),
+        body,
       });
       const payload = (await response.json()) as { contribution?: Contribution; error?: string };
       if (!response.ok || !payload.contribution) throw new Error(payload.error ?? "Submission failed");
@@ -1294,6 +1417,14 @@ export default function Home() {
                             </div>
                             <strong>{item.location}</strong>
                             <p>{item.details}</p>
+                            {item.photoUrl && (
+                              <figure className="contribution-photo">
+                                <Image src={item.photoUrl} alt={`${item.category} accessibility photo at ${item.location}`} width={900} height={600} unoptimized />
+                                <figcaption>
+                                  Camera photo · geo-tagged {item.photoLatitude?.toFixed(5)}, {item.photoLongitude?.toFixed(5)}
+                                </figcaption>
+                              </figure>
+                            )}
                             {item.latitude !== null && item.longitude !== null && (
                               <p className="saved-coordinate">⌖ Pinned at {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</p>
                             )}
@@ -1339,7 +1470,7 @@ export default function Home() {
                   <b>{form.latitude === null ? "Exact map pin required" : "Exact accessibility point pinned"}</b>
                   <small>
                     {form.latitude === null
-                      ? "Place the marker at the entrance, ramp, toilet or other feature—not at the building centre."
+                      ? "Place the marker at the entrance, ramp, toilet or other feature—not at the building centre. A camera photo can place it automatically."
                       : `${form.latitude.toFixed(7)}, ${form.longitude!.toFixed(7)}`}
                   </small>
                 </div>
@@ -1414,7 +1545,7 @@ export default function Home() {
               {submitState === "success" && <p className="form-success">Thank you — your information has been saved for review.</p>}
               <div className="modal-actions">
                 <button type="button" className="secondary-button" onClick={closeContribution}>Cancel</button>
-                <button className="primary-action" disabled={submitState === "saving"}>{submitState === "saving" ? "Saving…" : "Submit information"}</button>
+                <button className="primary-action" disabled={submitState === "saving" || photoState === "processing"}>{submitState === "saving" ? "Saving…" : "Submit information"}</button>
               </div>
             </form>
           </section>
@@ -1518,6 +1649,7 @@ export default function Home() {
                     </div>
                     <strong>{item.buildingName ?? item.buildingId}</strong>
                     <p>{item.location} — {item.details}</p>
+                    {item.photoUrl && <Image className="profile-photo" src={item.photoUrl} alt={`${item.category} accessibility photo`} width={240} height={164} unoptimized />}
                     <small>
                       {new Date(item.createdAt.replace(" ", "T") + "Z").toLocaleDateString()}
                       {item.anonymous ? " · posted without your name" : ` · shown as ${account.publicName}`}
