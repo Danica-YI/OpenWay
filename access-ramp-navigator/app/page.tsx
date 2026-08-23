@@ -1257,7 +1257,6 @@ export default function Home() {
                       </div>
                     ) : (
                       <div className="no-contributions">
-                        <span aria-hidden="true">＋</span>
                         <b>No community reports yet</b>
                         <p>Be the first to add a useful access detail.</p>
                       </div>
