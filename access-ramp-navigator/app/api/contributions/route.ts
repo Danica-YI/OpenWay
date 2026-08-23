@@ -15,7 +15,7 @@ function isBuildingId(value: string): boolean {
 }
 
 async function ensureSchema() {
-  const d1 = getD1();
+  const d1 = await getD1();
   await d1.batch([
     d1.prepare(`CREATE TABLE IF NOT EXISTS accessibility_contributions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +66,8 @@ export async function GET(request: Request) {
     const buildingId = new URL(request.url).searchParams.get("buildingId") ?? "";
     if (!isBuildingId(buildingId)) return Response.json({ error: "Unknown building" }, { status: 400 });
     await ensureSchema();
-    const rows = await getDb().select().from(accessibilityContributions)
+    const db = await getDb();
+    const rows = await db.select().from(accessibilityContributions)
       .where(eq(accessibilityContributions.buildingId, buildingId))
       .orderBy(desc(accessibilityContributions.createdAt), desc(accessibilityContributions.id))
       .limit(30);
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
     }
 
     await ensureSchema();
-    const [contribution] = await getDb().insert(accessibilityContributions).values({
+    const db = await getDb();
+    const [contribution] = await db.insert(accessibilityContributions).values({
       buildingId, category, location, details, latitude, longitude,
       contributor: contributorName(request, payload.contributor),
       status: "pending_review",

@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://access-ramp-navigator.awakenedaphid.chatgpt.site"),
   title: "AccessRamp Navigator",
   description: "Detailed building accessibility profiles covering entrances, ramps, toilets, lifts, parking, routes and community reports.",
+  other: { "codex-preview": "development" },
   openGraph: {
     title: "AccessRamp Navigator",
     description: "Know the entrance, ramp, toilet, lift and route before you arrive.",
