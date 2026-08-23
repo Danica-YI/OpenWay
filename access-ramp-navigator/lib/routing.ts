@@ -66,7 +66,7 @@ export async function fetchWalkingRoute(from: LatLng, to: LatLng): Promise<Walki
   const coords = `${from[1]},${from[0]};${to[1]},${to[0]}`;
   const url = `${OSRM_FOOT_ENDPOINT}/${coords}?overview=full&geometries=geojson&steps=true`;
 
-  const response = await fetch(url, { headers: { "User-Agent": "AccessRampNavigator/0.1 (accessibility mapping prototype)" } });
+  const response = await fetch(url, { headers: { "User-Agent": "OpenWay/0.1 (accessibility mapping prototype)" } });
   if (!response.ok) return null;
 
   const payload = (await response.json()) as OsrmResponse;

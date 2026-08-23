@@ -1,4 +1,4 @@
-# Code Network Hackathon — AccessRamp Navigator
+# Code Network Hackathon — OpenWay
 
 A responsive web app that provides far more detailed building accessibility
 information than general mapping services: which side the ramp is on, what level

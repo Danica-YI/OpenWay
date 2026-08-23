@@ -13,7 +13,7 @@ import { sessions, users } from "../db/schema";
 
 export type SessionUser = { id: number; email: string; displayName: string };
 
-const SESSION_COOKIE = "ar_session";
+const SESSION_COOKIE = "ow_session";
 const SESSION_DAYS = 30;
 const PBKDF2_ITERATIONS = 100_000;
 
@@ -77,7 +77,7 @@ export async function destroySession(token: string): Promise<void> {
 
 export function readSessionToken(request: Request): string | null {
   const header = request.headers.get("cookie") ?? "";
-  const match = header.match(/(?:^|;\s*)ar_session=([^;]+)/);
+  const match = header.match(/(?:^|;\s*)ow_session=([^;]+)/);
   return match ? match[1] : null;
 }
 
