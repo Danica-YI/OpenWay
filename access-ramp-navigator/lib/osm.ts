@@ -62,8 +62,17 @@ const OVERPASS_ENDPOINTS = [
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
-/** Give up on the whole lookup rather than hold a pan open indefinitely. */
-const OVERALL_TIMEOUT_MS = 15_000;
+/**
+ * Give up on the whole lookup rather than hold a pan open indefinitely.
+ *
+ * Generous, because it has to cover a legitimately slow answer as well as a
+ * dead one: a wide city-centre viewport is several thousand footprints and
+ * measured at 10.6 s against a healthy mirror. A tighter cap failed those
+ * viewports while Overpass was working perfectly well. An outage does not
+ * spend this budget — the mirrors are all in flight within 5 s and a refused
+ * connection comes back immediately.
+ */
+const OVERALL_TIMEOUT_MS = 25_000;
 
 /**
  * How long to wait for one mirror before also trying the next, rather than
