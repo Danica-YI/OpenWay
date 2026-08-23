@@ -2,9 +2,9 @@ import { desc, eq } from "drizzle-orm";
 import { ensureSchema, getDb } from "../../../db";
 import { accessibilityContributions, users } from "../../../db/schema";
 import { currentUser, publicName } from "../../../lib/auth";
-import { getPhotoBucket, MAX_PHOTO_BYTES } from "../../../lib/photos";
+import { FACILITY_LABELS } from "../../../lib/facilities";
 
-const CATEGORIES = new Set(["Ramp", "Accessible entrance", "Accessible toilet", "Lift", "Parking", "Door", "Other"]);
+const CATEGORIES = new Set(FACILITY_LABELS);
 
 /**
  * Contributions are keyed by OpenStreetMap id, so any building on the map can

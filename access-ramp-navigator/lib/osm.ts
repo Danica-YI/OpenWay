@@ -173,17 +173,30 @@ export function pointOnSide(center: LatLng, polygon: LatLng[], sideWord: string)
   if (targetIndex === -1 || !polygon.length) return null;
   const targetAngle = targetIndex * 45;
 
-  let best = polygon[0];
+  // Walk the outline rather than only its corners. Vertices alone put the
+  // result on whichever corner happens to face that way, which for a building
+  // with a long facade can be tens of metres from the middle of the wall.
+  const STEPS = 6;
+  let best: LatLng | null = null;
   let bestDelta = Infinity;
-  for (const point of polygon) {
-    const bearing = bearingDegrees(center, point);
-    const delta = Math.min(Math.abs(bearing - targetAngle), 360 - Math.abs(bearing - targetAngle));
-    if (delta < bestDelta) {
-      bestDelta = delta;
-      best = point;
+
+  for (let i = 0; i < polygon.length; i += 1) {
+    const from = polygon[i];
+    const to = polygon[(i + 1) % polygon.length];
+    for (let step = 0; step < STEPS; step += 1) {
+      const t = step / STEPS;
+      const candidate: LatLng = [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t];
+      const bearing = bearingDegrees(center, candidate);
+      const raw = Math.abs(bearing - targetAngle);
+      const delta = Math.min(raw, 360 - raw);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = candidate;
+      }
     }
   }
-  return best;
+
+  return best ?? polygon[0];
 }
 
 export function pointInPolygon(point: LatLng, polygon: LatLng[]): boolean {

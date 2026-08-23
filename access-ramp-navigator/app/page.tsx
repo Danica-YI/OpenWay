@@ -1,11 +1,28 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
+import { FACILITIES, facilityFor, facilityGlyphMarkup, type Facility } from "../lib/facilities";
 import type { WalkingRoute } from "../lib/routing";
+
+/** The same glyph the map pins use, for lists and the contribution form. */
+function FacilityIcon({ facility, size = 16 }: { facility: Facility; size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {facility.paths.map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}
+
+function draftPinHtml(facility: Facility): string {
+  return `<div class="draft-access-pin" style="--pin:${facility.colour}"><span>${facilityGlyphMarkup(facility, 22)}</span></div>`;
+}
+
+function accessPointHtml(facility: Facility): string {
+  return `<div class="access-point-pin" style="--pin:${facility.colour}"><span>${facilityGlyphMarkup(facility, 16)}</span></div>`;
+}
 
 type Filter = "All" | "Surveyed" | "Step-free" | "Toilet" | "Needs info";
 type Tab = "details" | "route" | "community";
@@ -182,6 +199,19 @@ function drawerBottomHeight(map: LeafletMap): number {
   return isBottomSheet ? Math.min(drawerRect.height, mapRect.height) : 0;
 }
 
+/**
+ * Where the bottom sheet's top edge falls inside the map container, or null on
+ * layouts where the drawer sits beside the map instead of over it.
+ */
+function sheetTopWithinMap(map: LeafletMap): number | null {
+  const drawerEl = document.querySelector(".building-drawer");
+  if (!drawerEl) return null;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const drawerRect = drawerEl.getBoundingClientRect();
+  if (drawerRect.width < mapRect.width * 0.7) return null;
+  return drawerRect.top - mapRect.top;
+}
+
 export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
@@ -192,6 +222,8 @@ export default function Home() {
   const routeHalo = useRef<Polyline | null>(null);
   const userMarker = useRef<Marker | null>(null);
   const draftPinMarker = useRef<Marker | null>(null);
+  const categoryRef = useRef("Ramp");
+  const entranceMarker = useRef<Marker | null>(null);
   const requestCache = useRef<Map<string, MapBuilding[]>>(new Map());
   const loadedBBox = useRef<BBox | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -263,10 +295,35 @@ export default function Home() {
     if (curated) {
       const sideWord = parseCompassWord(curated.entrance.side);
       const point = sideWord ? pointOnSide(selected.center, selected.polygon, sideWord) : null;
-      if (point) return { point, side: sideWord! };
+      if (point) {
+        return {
+          point,
+          side: sideWord!,
+          // Derived from a written description, so the pin marks the right wall
+          // rather than the exact doorway. Said so on the map.
+          precision: "approximate" as const,
+          label: "Accessible entrance",
+          detail: curated.entrance.side,
+        };
+      }
     }
     const osmEntrance = bestEntrance(selected);
-    return osmEntrance ? { point: osmEntrance.point, side: osmEntrance.side } : null;
+    if (!osmEntrance) return null;
+    return {
+      point: osmEntrance.point,
+      side: osmEntrance.side,
+      precision: "exact" as const,
+      label: osmEntrance.wheelchair === "yes"
+        ? "Step-free entrance"
+        : osmEntrance.kind === "main"
+          ? "Main entrance"
+          : "Entrance",
+      detail: [
+        `${osmEntrance.side} side`,
+        `step-free: ${accessWord(osmEntrance.wheelchair).toLowerCase()}`,
+        osmEntrance.automatic ? "automatic door" : null,
+      ].filter(Boolean).join(" · "),
+    };
   }, [selected, curated]);
 
   const statusOf = useCallback(
@@ -322,9 +379,12 @@ export default function Home() {
     const map = mapInstance.current;
     if (!map) return;
     const L = await import("leaflet");
+    // Read through a ref rather than a dependency: the map-drawing effect also
+    // depends on this callback, and redrawing every polygon each time someone
+    // changes the dropdown would be a heavy price for swapping one glyph.
     const icon = L.divIcon({
       className: "custom-marker",
-      html: '<div class="draft-access-pin"><span>♿</span></div>',
+      html: draftPinHtml(facilityFor(categoryRef.current)),
       iconSize: [46, 54],
       iconAnchor: [23, 52],
     });
@@ -343,6 +403,26 @@ export default function Home() {
       });
     setForm((current) => ({ ...current, latitude, longitude }));
   }, [removeDraftPin]);
+
+  // Keep the draft pin showing the feature currently chosen in the form, so
+  // what you are about to add is what you see before you save it.
+  useEffect(() => {
+    categoryRef.current = form.category;
+    const marker = draftPinMarker.current;
+    if (!marker) return;
+    let ignore = false;
+    void (async () => {
+      const L = await import("leaflet");
+      if (ignore) return;
+      marker.setIcon(L.divIcon({
+        className: "custom-marker",
+        html: draftPinHtml(facilityFor(form.category)),
+        iconSize: [46, 54],
+        iconAnchor: [23, 52],
+      }));
+    })();
+    return () => { ignore = true; };
+  }, [form.category]);
 
   const closeContribution = useCallback(() => {
     setContributionOpen(false);
@@ -514,6 +594,7 @@ export default function Home() {
     return () => {
       active = false;
       releaseObserver?.();
+      entranceMarker.current = null;
       mapInstance.current?.remove();
       mapInstance.current = null;
       accessPointLayer.current = null;
@@ -730,6 +811,80 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [routeVisible, walkingRoute, selected, location, routeEntrance]);
 
+  // --- keep the building above the sheet ----------------------------------
+  // Framing happens once, when a building is picked. The sheet can grow after
+  // that — expanding it, or switching to a taller tab — and the building ends
+  // up behind it. Watch the sheet and nudge the map only when the building
+  // would actually be hidden, so it does not twitch on every content change.
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !selected || !detailOpen) return;
+    const drawerEl = document.querySelector(".building-drawer");
+    if (!drawerEl) return;
+
+    const centre = selected.center;
+    const keepInView = () => {
+      const current = mapInstance.current;
+      if (!current) return;
+      const sheetTop = sheetTopWithinMap(current);
+      if (sheetTop === null) return;
+
+      const MARGIN = 28;
+      const limit = sheetTop - MARGIN;
+      const topInset = 74; // clear of the legend and locate button
+      if (limit <= topInset) return; // sheet covers the map; nothing sensible to show
+
+      const point = current.latLngToContainerPoint(centre);
+      if (point.y <= limit && point.y >= topInset) return;
+
+      const desired = (topInset + limit) / 2;
+      current.panBy([0, Math.round(point.y - desired)], { animate: true, duration: 0.3 });
+    };
+
+    const observer = new ResizeObserver(keepInView);
+    observer.observe(drawerEl);
+    return () => observer.disconnect();
+  }, [selected, detailOpen]);
+
+  // --- mark the entrance on the map ---------------------------------------
+  useEffect(() => {
+    async function drawEntrance() {
+      if (!mapInstance.current) return;
+      const L = await import("leaflet");
+      entranceMarker.current?.remove();
+      entranceMarker.current = null;
+      if (!routeEntrance || !detailOpen) return;
+
+      const approximate = routeEntrance.precision === "approximate";
+      const icon = L.divIcon({
+        className: "custom-marker",
+        html: `<div class="entrance-pin${approximate ? " approximate" : ""}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 17L17 7M9.5 7H17v7.5" />
+            </svg>
+          </div>`,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      });
+
+      entranceMarker.current = L.marker(routeEntrance.point, {
+        icon,
+        keyboard: false,
+        title: `${routeEntrance.label} — ${routeEntrance.detail}`,
+        zIndexOffset: 800,
+      })
+        .addTo(mapInstance.current)
+        .bindTooltip(approximate ? `${routeEntrance.label} · approximate` : routeEntrance.label, {
+          permanent: true,
+          direction: "top",
+          offset: [0, -18],
+          className: "entrance-tooltip",
+        });
+    }
+    drawEntrance();
+  }, [routeEntrance, detailOpen]);
+
   // --- community reports for the selected building ------------------------
   useEffect(() => {
     let ignore = false;
@@ -765,9 +920,10 @@ export default function Home() {
       const L = await import("leaflet");
       if (ignore) return;
       for (const item of pinned) {
+        const facility = facilityFor(item.category);
         const icon = L.divIcon({
           className: "custom-marker",
-          html: '<div class="access-point-pin"><span>♿</span></div>',
+          html: accessPointHtml(facility),
           iconSize: [34, 42],
           iconAnchor: [17, 40],
         });
@@ -1255,7 +1411,10 @@ export default function Home() {
                       <div className="contribution-list">
                         {contributions.map((item) => (
                           <article key={item.id}>
-                            <div><b>{item.category}</b><span>Unverified</span></div>
+                            <div>
+                              <b><i className="facility-tag" style={{ "--pin": facilityFor(item.category).colour } as CSSProperties}><FacilityIcon facility={facilityFor(item.category)} size={13} /></i>{item.category}</b>
+                              <span>Unverified</span>
+                            </div>
                             <strong>{item.location}</strong>
                             <p>{item.details}</p>
                             {item.photoUrl && (
@@ -1275,7 +1434,6 @@ export default function Home() {
                       </div>
                     ) : (
                       <div className="no-contributions">
-                        <span aria-hidden="true">＋</span>
                         <b>No community reports yet</b>
                         <p>Be the first to add a useful access detail.</p>
                       </div>
@@ -1318,37 +1476,24 @@ export default function Home() {
                 </div>
                 <button type="button" onClick={startPinPlacement}>{form.latitude === null ? "Place pin on map" : "Adjust pin"}</button>
               </div>
-              <div className={capturedPhoto ? "camera-field captured" : "camera-field"}>
-                {cameraOpen ? (
-                  <video ref={cameraVideoRef} autoPlay playsInline muted aria-label="Live camera preview" />
-                ) : capturedPhoto ? (
-                  <Image src={capturedPhoto.previewUrl} alt="Camera preview of the accessibility feature" width={80} height={80} unoptimized />
-                ) : (
-                  <span className="camera-field-icon" aria-hidden="true">📷</span>
-                )}
-                <div>
-                  <b>{cameraOpen ? "Frame the accessibility feature" : capturedPhoto ? "Camera photo geo-tagged" : "Add a current photo (optional)"}</b>
-                  <small>
-                    {cameraOpen
-                      ? "Location will be captured when you press Take photo."
-                      : capturedPhoto
-                      ? `${capturedPhoto.latitude.toFixed(5)}, ${capturedPhoto.longitude.toFixed(5)} · accurate to about ${Math.round(capturedPhoto.accuracy)} m. The map pin was placed here automatically.`
-                      : "Take a new photo of the ramp, toilet, steps or access feature. It will geo-tag and place the map pin; there is no existing-file upload."}
-                  </small>
-                </div>
-                <div className="camera-actions">
-                  {cameraOpen && <button type="button" className="camera-cancel" onClick={stopCamera}>Cancel</button>}
-                  <button type="button" disabled={photoState === "processing"} onClick={cameraOpen ? takeCameraPhoto : openCamera}>
-                    {photoState === "processing" ? "Geo-tagging…" : cameraOpen ? "Take photo" : capturedPhoto ? "Retake" : "Open camera"}
-                  </button>
+              <div className="facility-field">
+                <span id="facility-label">Accessibility feature</span>
+                <div className="facility-grid" role="group" aria-labelledby="facility-label">
+                  {FACILITIES.map((facility) => (
+                    <button
+                      key={facility.id}
+                      type="button"
+                      className={form.category === facility.label ? "facility-chip active" : "facility-chip"}
+                      style={{ "--pin": facility.colour } as CSSProperties}
+                      aria-pressed={form.category === facility.label}
+                      onClick={() => setForm({ ...form, category: facility.label })}
+                    >
+                      <i><FacilityIcon facility={facility} size={18} /></i>
+                      <b>{facility.label}</b>
+                    </button>
+                  ))}
                 </div>
               </div>
-              <label>Accessibility feature
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
-                  <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
-                </select>
-              </label>
 
               {/* Attribution comes from the account, not a free-text name field
                   anyone could put someone else's name into. */}
@@ -1381,8 +1526,16 @@ export default function Home() {
               <label>Exact location or level
                 <input required maxLength={140} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. East side, Level 2 beside the lift" />
               </label>
-              <label>Detailed accessibility information
-                <textarea required maxLength={800} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} placeholder="Include measurements, the side of the building, door type, condition or another practical detail." rows={5} />
+              <label><span>Detailed accessibility information <small>(at least 10 characters)</small></span>
+                <textarea
+                  required
+                  minLength={10}
+                  maxLength={800}
+                  value={form.details}
+                  onChange={(e) => setForm({ ...form, details: e.target.value })}
+                  placeholder="Include measurements, the side of the building, door type, condition or another practical detail."
+                  rows={5}
+                />
               </label>
               <div className="form-guidance">
                 <span aria-hidden="true">✓</span>
@@ -1491,7 +1644,7 @@ export default function Home() {
                 {myContributions.map((item) => (
                   <article key={item.id}>
                     <div>
-                      <b>{item.category}</b>
+                      <b><i className="facility-tag" style={{ "--pin": facilityFor(item.category).colour } as CSSProperties}><FacilityIcon facility={facilityFor(item.category)} size={13} /></i>{item.category}</b>
                       <span>{item.status === "pending_review" ? "Awaiting review" : item.status}</span>
                     </div>
                     <strong>{item.buildingName ?? item.buildingId}</strong>
@@ -1532,6 +1685,7 @@ function SurveyedSections({ profile }: { profile: SurveyedProfile }) {
           <small>ACCESSIBLE ENTRANCE</small>
           <b>{profile.entrance.side}</b>
           <p>{profile.entrance.level} · {profile.entrance.door}</p>
+          <p className="pin-note">Marked on the map. The pin shows the right side of the building; the exact doorway has not been surveyed to a coordinate.</p>
         </div>
       </section>
 
