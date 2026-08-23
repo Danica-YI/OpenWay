@@ -154,6 +154,7 @@ export default function Home() {
   const routeHalo = useRef<Polyline | null>(null);
   const userMarker = useRef<Marker | null>(null);
   const draftPinMarker = useRef<Marker | null>(null);
+  const entranceMarker = useRef<Marker | null>(null);
   const requestCache = useRef<Map<string, MapBuilding[]>>(new Map());
   const loadedBBox = useRef<BBox | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -220,10 +221,35 @@ export default function Home() {
     if (curated) {
       const sideWord = parseCompassWord(curated.entrance.side);
       const point = sideWord ? pointOnSide(selected.center, selected.polygon, sideWord) : null;
-      if (point) return { point, side: sideWord! };
+      if (point) {
+        return {
+          point,
+          side: sideWord!,
+          // Derived from a written description, so the pin marks the right wall
+          // rather than the exact doorway. Said so on the map.
+          precision: "approximate" as const,
+          label: "Accessible entrance",
+          detail: curated.entrance.side,
+        };
+      }
     }
     const osmEntrance = bestEntrance(selected);
-    return osmEntrance ? { point: osmEntrance.point, side: osmEntrance.side } : null;
+    if (!osmEntrance) return null;
+    return {
+      point: osmEntrance.point,
+      side: osmEntrance.side,
+      precision: "exact" as const,
+      label: osmEntrance.wheelchair === "yes"
+        ? "Step-free entrance"
+        : osmEntrance.kind === "main"
+          ? "Main entrance"
+          : "Entrance",
+      detail: [
+        `${osmEntrance.side} side`,
+        `step-free: ${accessWord(osmEntrance.wheelchair).toLowerCase()}`,
+        osmEntrance.automatic ? "automatic door" : null,
+      ].filter(Boolean).join(" · "),
+    };
   }, [selected, curated]);
 
   const statusOf = useCallback(
@@ -405,6 +431,7 @@ export default function Home() {
     return () => {
       active = false;
       releaseObserver?.();
+      entranceMarker.current = null;
       mapInstance.current?.remove();
       mapInstance.current = null;
       accessPointLayer.current = null;
@@ -620,6 +647,45 @@ export default function Home() {
     draw();
     return () => { cancelled = true; };
   }, [routeVisible, walkingRoute, selected, location, routeEntrance]);
+
+  // --- mark the entrance on the map ---------------------------------------
+  useEffect(() => {
+    async function drawEntrance() {
+      if (!mapInstance.current) return;
+      const L = await import("leaflet");
+      entranceMarker.current?.remove();
+      entranceMarker.current = null;
+      if (!routeEntrance || !detailOpen) return;
+
+      const approximate = routeEntrance.precision === "approximate";
+      const icon = L.divIcon({
+        className: "custom-marker",
+        html: `<div class="entrance-pin${approximate ? " approximate" : ""}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 17L17 7M9.5 7H17v7.5" />
+            </svg>
+          </div>`,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
+      });
+
+      entranceMarker.current = L.marker(routeEntrance.point, {
+        icon,
+        keyboard: false,
+        title: `${routeEntrance.label} — ${routeEntrance.detail}`,
+        zIndexOffset: 800,
+      })
+        .addTo(mapInstance.current)
+        .bindTooltip(approximate ? `${routeEntrance.label} · approximate` : routeEntrance.label, {
+          permanent: true,
+          direction: "top",
+          offset: [0, -18],
+          className: "entrance-tooltip",
+        });
+    }
+    drawEntrance();
+  }, [routeEntrance, detailOpen]);
 
   // --- community reports for the selected building ------------------------
   useEffect(() => {
@@ -1374,6 +1440,7 @@ function SurveyedSections({ profile }: { profile: SurveyedProfile }) {
           <small>ACCESSIBLE ENTRANCE</small>
           <b>{profile.entrance.side}</b>
           <p>{profile.entrance.level} · {profile.entrance.door}</p>
+          <p className="pin-note">Marked on the map. The pin shows the right side of the building; the exact doorway has not been surveyed to a coordinate.</p>
         </div>
       </section>
 
