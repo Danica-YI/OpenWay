@@ -1,10 +1,28 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
+import { FACILITIES, facilityFor, facilityGlyphMarkup, type Facility } from "../lib/facilities";
 import type { WalkingRoute } from "../lib/routing";
+
+/** The same glyph the map pins use, for lists and the contribution form. */
+function FacilityIcon({ facility, size = 16 }: { facility: Facility; size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {facility.paths.map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}
+
+function draftPinHtml(facility: Facility): string {
+  return `<div class="draft-access-pin" style="--pin:${facility.colour}"><span>${facilityGlyphMarkup(facility, 22)}</span></div>`;
+}
+
+function accessPointHtml(facility: Facility): string {
+  return `<div class="access-point-pin" style="--pin:${facility.colour}"><span>${facilityGlyphMarkup(facility, 16)}</span></div>`;
+}
 
 type Filter = "All" | "Surveyed" | "Step-free" | "Toilet" | "Needs info";
 type Tab = "details" | "route" | "community";
@@ -167,6 +185,7 @@ export default function Home() {
   const routeHalo = useRef<Polyline | null>(null);
   const userMarker = useRef<Marker | null>(null);
   const draftPinMarker = useRef<Marker | null>(null);
+  const categoryRef = useRef("Ramp");
   const entranceMarker = useRef<Marker | null>(null);
   const requestCache = useRef<Map<string, MapBuilding[]>>(new Map());
   const loadedBBox = useRef<BBox | null>(null);
@@ -318,9 +337,12 @@ export default function Home() {
     const map = mapInstance.current;
     if (!map) return;
     const L = await import("leaflet");
+    // Read through a ref rather than a dependency: the map-drawing effect also
+    // depends on this callback, and redrawing every polygon each time someone
+    // changes the dropdown would be a heavy price for swapping one glyph.
     const icon = L.divIcon({
       className: "custom-marker",
-      html: '<div class="draft-access-pin"><span>♿</span></div>',
+      html: draftPinHtml(facilityFor(categoryRef.current)),
       iconSize: [46, 54],
       iconAnchor: [23, 52],
     });
@@ -339,6 +361,26 @@ export default function Home() {
       });
     setForm((current) => ({ ...current, latitude, longitude }));
   }, [removeDraftPin]);
+
+  // Keep the draft pin showing the feature currently chosen in the form, so
+  // what you are about to add is what you see before you save it.
+  useEffect(() => {
+    categoryRef.current = form.category;
+    const marker = draftPinMarker.current;
+    if (!marker) return;
+    let ignore = false;
+    void (async () => {
+      const L = await import("leaflet");
+      if (ignore) return;
+      marker.setIcon(L.divIcon({
+        className: "custom-marker",
+        html: draftPinHtml(facilityFor(form.category)),
+        iconSize: [46, 54],
+        iconAnchor: [23, 52],
+      }));
+    })();
+    return () => { ignore = true; };
+  }, [form.category]);
 
   const closeContribution = useCallback(() => {
     setContributionOpen(false);
@@ -770,9 +812,10 @@ export default function Home() {
       const L = await import("leaflet");
       if (ignore) return;
       for (const item of pinned) {
+        const facility = facilityFor(item.category);
         const icon = L.divIcon({
           className: "custom-marker",
-          html: '<div class="access-point-pin"><span>♿</span></div>',
+          html: accessPointHtml(facility),
           iconSize: [34, 42],
           iconAnchor: [17, 40],
         });
@@ -1245,7 +1288,10 @@ export default function Home() {
                       <div className="contribution-list">
                         {contributions.map((item) => (
                           <article key={item.id}>
-                            <div><b>{item.category}</b><span>Unverified</span></div>
+                            <div>
+                              <b><i className="facility-tag" style={{ "--pin": facilityFor(item.category).colour } as CSSProperties}><FacilityIcon facility={facilityFor(item.category)} size={13} /></i>{item.category}</b>
+                              <span>Unverified</span>
+                            </div>
                             <strong>{item.location}</strong>
                             <p>{item.details}</p>
                             {item.latitude !== null && item.longitude !== null && (
@@ -1299,12 +1345,24 @@ export default function Home() {
                 </div>
                 <button type="button" onClick={startPinPlacement}>{form.latitude === null ? "Place pin on map" : "Adjust pin"}</button>
               </div>
-              <label>Accessibility feature
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
-                  <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
-                </select>
-              </label>
+              <div className="facility-field">
+                <span id="facility-label">Accessibility feature</span>
+                <div className="facility-grid" role="group" aria-labelledby="facility-label">
+                  {FACILITIES.map((facility) => (
+                    <button
+                      key={facility.id}
+                      type="button"
+                      className={form.category === facility.label ? "facility-chip active" : "facility-chip"}
+                      style={{ "--pin": facility.colour } as CSSProperties}
+                      aria-pressed={form.category === facility.label}
+                      onClick={() => setForm({ ...form, category: facility.label })}
+                    >
+                      <i><FacilityIcon facility={facility} size={18} /></i>
+                      <b>{facility.label}</b>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Attribution comes from the account, not a free-text name field
                   anyone could put someone else's name into. */}
@@ -1455,7 +1513,7 @@ export default function Home() {
                 {myContributions.map((item) => (
                   <article key={item.id}>
                     <div>
-                      <b>{item.category}</b>
+                      <b><i className="facility-tag" style={{ "--pin": facilityFor(item.category).colour } as CSSProperties}><FacilityIcon facility={facilityFor(item.category)} size={13} /></i>{item.category}</b>
                       <span>{item.status === "pending_review" ? "Awaiting review" : item.status}</span>
                     </div>
                     <strong>{item.buildingName ?? item.buildingId}</strong>
