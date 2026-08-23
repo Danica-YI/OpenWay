@@ -968,8 +968,7 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="OpenWay home">
-          <span className="brand-mark">♿</span>
-          <span>Open<span>Way</span></span>
+          <img src="/openway.jpeg" alt="OpenWay" />
         </a>
         <div className="topbar-account">
           <AccountControls
