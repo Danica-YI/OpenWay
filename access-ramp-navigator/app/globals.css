@@ -274,3 +274,23 @@
   .pin-placement-actions{width:100%;flex-direction:row}
   .pin-placement-actions button{flex:1}
 }
+
+/* ---- entrance marker ----------------------------------------------------- */
+/* The one thing someone needs to see before they set off: which way in. Solid
+   for a mapped doorway, with an added dashed ring when the position was
+   inferred from a written description rather than surveyed coordinates. */
+.pin-note{margin-top:7px!important;font-size:11px!important;color:var(--teal-dark)!important;opacity:.85}
+.entrance-pin{position:relative;width:46px;height:46px;display:grid;place-items:center;color:#fff}
+.entrance-pin::before{content:"";position:absolute;width:30px;height:30px;border-radius:50%;
+  background:var(--teal);box-shadow:0 0 0 3px #fff,0 5px 14px rgba(17,55,59,.4)}
+.entrance-pin svg{position:relative;z-index:1}
+.entrance-pin.approximate::after{content:"";position:absolute;inset:2px;border-radius:50%;
+  border:2px dashed var(--teal);opacity:.75}
+
+.leaflet-tooltip.entrance-tooltip{background:var(--teal-dark);color:#fff;border:0;border-radius:8px;
+  padding:4px 9px;font-size:11px;font-weight:750;box-shadow:0 5px 16px rgba(17,55,59,.32);white-space:nowrap}
+.leaflet-tooltip.entrance-tooltip::before{border-top-color:var(--teal-dark)}
+
+@media(max-width:760px){
+  .leaflet-tooltip.entrance-tooltip{font-size:10.5px;padding:3px 8px}
+}
