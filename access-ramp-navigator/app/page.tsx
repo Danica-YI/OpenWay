@@ -366,10 +366,10 @@ export default function Home() {
       L.control
         .zoom({ position: window.matchMedia("(max-width: 760px)").matches ? "topright" : "bottomright" })
         .addTo(map);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 20,
-        subdomains: "abcd",
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+        subdomains: "abc",
+        attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
 
       shapeLayer.current = L.layerGroup().addTo(map);
