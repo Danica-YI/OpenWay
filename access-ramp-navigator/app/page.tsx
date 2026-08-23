@@ -1380,11 +1380,6 @@ export default function Home() {
             />
           </div>
 
-          <button className="panel-contribute" type="button" onClick={startContribution}>
-            <span aria-hidden="true">＋</span>
-            {selectedId && selected ? `Add info about ${displayName(selected)}` : "Contribute accessibility info"}
-          </button>
-
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
             <h1>Every access detail, in one place.</h1>
