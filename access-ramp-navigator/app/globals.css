@@ -56,6 +56,36 @@
 .report-button:disabled{opacity:.5;cursor:not-allowed}
 .report-button:disabled:hover{border-color:#b9cfcd;color:inherit}
 
+/* ---- accounts and contribution entry points ----------------------------- */
+.icon-action{display:none;width:41px;height:41px;align-items:center;justify-content:center;padding:0;border:1px solid #b9cfcd;border-radius:10px;background:#fff;color:var(--navy);cursor:pointer}
+.icon-action:hover{border-color:var(--teal);color:var(--teal)}
+
+.account-block{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:11px 12px;margin-bottom:12px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.account-avatar{width:36px;height:36px;flex:0 0 auto;display:grid;place-items:center;border-radius:50%;background:var(--teal);color:#fff;font-weight:800;font-size:15px}
+.account-copy{min-width:0;flex:1 1 130px;display:flex;flex-direction:column;gap:2px}
+.account-copy strong{font-size:13px;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-copy small{font-size:10.5px;color:var(--muted);line-height:1.35}
+.account-actions{display:flex;gap:6px;flex:0 0 auto}
+.account-actions button{border:1px solid #cbd7da;border-radius:9px;background:#fff;padding:6px 9px;font-size:10.5px;font-weight:750;cursor:pointer;white-space:nowrap}
+.account-actions button:hover{border-color:var(--teal);color:var(--teal-dark)}
+
+.panel-contribute{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:14px;padding:11px 12px;border:1px solid #b9dcd5;border-radius:12px;background:var(--pale);color:var(--teal-dark);font-size:12.5px;font-weight:800;cursor:pointer}
+.panel-contribute:hover{background:#dcefe9;border-color:var(--teal)}
+.panel-contribute span{font-size:16px;line-height:1}
+
+.attribution-choice{margin:2px 0 4px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fbfcfa}
+.attribution-choice p{margin:0;font-size:12px;line-height:1.5;color:var(--ink)}
+.attribution-note{color:var(--muted)}
+.checkbox{display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:9px;font-size:12px;cursor:pointer}
+.checkbox input{width:16px;height:16px;flex:0 0 auto;accent-color:var(--teal)}
+.link-button{border:0;background:none;padding:0;color:var(--teal-dark);font-weight:750;text-decoration:underline;cursor:pointer;font-size:inherit}
+
+.profile-summary{display:flex;align-items:baseline;gap:7px;margin:2px 0 14px;padding:11px 13px;border-radius:12px;background:var(--pale)}
+.profile-summary strong{font-size:22px;color:var(--teal-dark);font-family:Georgia,serif}
+.profile-summary span{font-size:12px;color:var(--teal-dark)}
+
+.app-toast{position:fixed;z-index:2400;left:50%;bottom:26px;transform:translateX(-50%);max-width:calc(100% - 32px);background:rgba(18,40,59,.95);color:#fff;font-size:13px;font-weight:650;padding:10px 17px;border-radius:999px;box-shadow:0 10px 30px rgba(18,40,59,.3);pointer-events:none;text-align:center}
+
 /* ---- hamburger toggle (mobile only) ------------------------------------- */
 .menu-toggle{display:none;width:41px;height:41px;border:1px solid #b9cfcd;border-radius:10px;background:#fff;cursor:pointer;padding:0;align-items:center;justify-content:center;gap:4px;flex-direction:column}
 .menu-toggle span{display:block;width:17px;height:2px;border-radius:2px;background:var(--navy);transition:transform .2s,opacity .2s}
@@ -84,7 +114,12 @@
   /* A contribution needs a selected building, and the drawer already offers
      one, so the header action gives its space to the menu on a phone. */
   .report-button{display:none}
-  .menu-toggle{display:flex;margin-left:auto}
+  /* Contributing is reachable on a phone again: an icon beside the menu, plus
+     an entry in the panel itself. */
+  .icon-action{display:flex}
+  .contribute-icon{margin-left:auto}
+  .menu-toggle{display:flex}
+  .app-toast{bottom:20px}
 
   /* The list, search, filters and heading live in a panel behind the menu
      button instead of permanently occupying the top third of the screen. */

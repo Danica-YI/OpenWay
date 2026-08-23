@@ -12,6 +12,20 @@ type Tab = "details" | "route" | "community";
 /** How complete a building's accessibility picture is. Drives the map colours. */
 type InfoStatus = "surveyed" | "mapped" | "reported" | "unknown";
 
+type Account = { id: number; email: string; displayName: string; publicName: string };
+
+type MyContribution = {
+  id: number;
+  buildingId: string;
+  buildingName: string | null;
+  category: string;
+  location: string;
+  details: string;
+  status: string;
+  anonymous: boolean;
+  createdAt: string;
+};
+
 type Contribution = {
   id: number;
   buildingId: string;
@@ -21,6 +35,7 @@ type Contribution = {
   contributor: string;
   status: string;
   createdAt: string;
+  mine?: boolean;
 };
 
 // --- Demo venue ----------------------------------------------------------
@@ -157,11 +172,21 @@ export default function Home() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
+  const [authForm, setAuthForm] = useState({ email: "", displayName: "", password: "" });
+  const [authState, setAuthState] = useState<"idle" | "saving">("idle");
+  const [authError, setAuthError] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [myContributions, setMyContributions] = useState<MyContribution[]>([]);
+  const [loadingMine, setLoadingMine] = useState(false);
+  const [toast, setToast] = useState("");
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loadingContributions, setLoadingContributions] = useState(false);
   const [submitState, setSubmitState] = useState<"idle" | "saving" | "success" | "error">("idle");
-  const [form, setForm] = useState({ category: "Ramp", location: "", details: "", contributor: "" });
+  const [form, setForm] = useState({ category: "Ramp", location: "", details: "", anonymous: false });
 
   // Derived, not stored: the viewport already tells us whether we are too far out.
   const needsZoom = viewport !== null && viewport.zoom < MIN_ZOOM;
@@ -233,7 +258,7 @@ export default function Home() {
   }, [filter, query, withDistance]);
 
   const openContribution = useCallback(() => {
-    setForm({ category: "Ramp", location: "", details: "", contributor: "" });
+    setForm({ category: "Ramp", location: "", details: "", anonymous: false });
     setSubmitState("idle");
     setContributionOpen(true);
   }, []);
@@ -517,6 +542,27 @@ export default function Home() {
     return () => { ignore = true; };
   }, [selectedId]);
 
+  // --- who is signed in ---------------------------------------------------
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        const payload = (await response.json()) as { user?: Account | null };
+        if (!ignore) setAccount(payload.user ?? null);
+      } catch {
+        /* signed out is the safe assumption */
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   // --- browse panel keyboard handling -------------------------------------
   useEffect(() => {
     if (!menuOpen) return;
@@ -538,6 +584,78 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [contributionOpen]);
 
+  function openAuth(mode: "signin" | "register") {
+    setAuthMode(mode);
+    setAuthForm({ email: "", displayName: "", password: "" });
+    setAuthError("");
+    setAuthState("idle");
+    setMenuOpen(false);
+    setAuthOpen(true);
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthState("saving");
+    setAuthError("");
+    try {
+      const endpoint = authMode === "signin" ? "/api/auth/login" : "/api/auth/register";
+      const body = authMode === "signin"
+        ? { email: authForm.email, password: authForm.password }
+        : authForm;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as { user?: Account; error?: string };
+      if (!response.ok || !payload.user) throw new Error(payload.error ?? "That did not work");
+      setAccount(payload.user);
+      setAuthOpen(false);
+      setToast(authMode === "signin" ? `Signed in as ${payload.user.publicName}` : `Welcome, ${payload.user.publicName}`);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "That did not work");
+    } finally {
+      setAuthState("idle");
+    }
+  }
+
+  async function signOut() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      /* the cookie is cleared server-side; fall through either way */
+    }
+    setAccount(null);
+    setProfileOpen(false);
+    setMenuOpen(false);
+    setToast("Signed out");
+  }
+
+  async function openProfile() {
+    setMenuOpen(false);
+    setProfileOpen(true);
+    setLoadingMine(true);
+    try {
+      const response = await fetch("/api/me/contributions");
+      const payload = (await response.json()) as { contributions?: MyContribution[] };
+      setMyContributions(payload.contributions ?? []);
+    } catch {
+      setMyContributions([]);
+    } finally {
+      setLoadingMine(false);
+    }
+  }
+
+  /** The contribute action needs a building, so say so rather than sitting disabled. */
+  function startContribution() {
+    setMenuOpen(false);
+    if (!selectedId) {
+      setToast("Tap a building on the map first");
+      return;
+    }
+    openContribution();
+  }
+
   async function submitContribution(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedId) return;
@@ -546,7 +664,7 @@ export default function Home() {
       const response = await fetch("/api/contributions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, buildingId: selectedId }),
+        body: JSON.stringify({ ...form, buildingId: selectedId, buildingName: selected ? displayName(selected) : null }),
       });
       const payload = (await response.json()) as { contribution?: Contribution; error?: string };
       if (!response.ok || !payload.contribution) throw new Error(payload.error ?? "Submission failed");
@@ -602,6 +720,12 @@ export default function Home() {
           <span aria-hidden="true">＋</span> {selectedId ? "Contribute accessibility info" : "Select a building first"}
         </button>
 
+        <button className="icon-action contribute-icon" type="button" onClick={startContribution} aria-label="Contribute accessibility info" title="Contribute accessibility info">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+
         <button
           className={menuOpen ? "menu-toggle open" : "menu-toggle"}
           type="button"
@@ -618,6 +742,40 @@ export default function Home() {
 
       <section className={`workspace${detailOpen && selected ? " detail-open" : ""}${menuOpen ? " menu-open" : ""}`} id="top">
         <aside className="sidebar" id="browse-panel" aria-label="Buildings in view">
+          <div className="account-block">
+            {account ? (
+              <>
+                <span className="account-avatar" aria-hidden="true">
+                  {account.displayName.trim().slice(0, 1).toUpperCase()}
+                </span>
+                <div className="account-copy">
+                  <strong>{account.displayName}</strong>
+                  <small>Shown publicly as {account.publicName}</small>
+                </div>
+                <div className="account-actions">
+                  <button type="button" onClick={openProfile}>My contributions</button>
+                  <button type="button" onClick={signOut}>Sign out</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="account-copy">
+                  <strong>Not signed in</strong>
+                  <small>Sign in to have your reports credited to you</small>
+                </div>
+                <div className="account-actions">
+                  <button type="button" onClick={() => openAuth("signin")}>Sign in</button>
+                  <button type="button" onClick={() => openAuth("register")}>Create account</button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button className="panel-contribute" type="button" onClick={startContribution}>
+            <span aria-hidden="true">＋</span>
+            {selectedId && selected ? `Add info about ${displayName(selected)}` : "Contribute accessibility info"}
+          </button>
+
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
             <h1>Every access detail, in one place.</h1>
@@ -859,16 +1017,40 @@ export default function Home() {
               <button className="close-detail" onClick={() => setContributionOpen(false)} aria-label="Close contribution form">×</button>
             </div>
             <form onSubmit={submitContribution}>
-              <div className="form-row">
-                <label>Accessibility feature
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
-                    <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
-                  </select>
-                </label>
-                <label><span>Your name <small>(optional)</small></span>
-                  <input value={form.contributor} maxLength={60} onChange={(e) => setForm({ ...form, contributor: e.target.value })} placeholder="Community member" />
-                </label>
+              <label>Accessibility feature
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
+                  <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
+                </select>
+              </label>
+
+              {/* Attribution comes from the account, not a free-text name field
+                  anyone could put someone else's name into. */}
+              <div className="attribution-choice">
+                {account ? (
+                  <>
+                    <p>
+                      Posting as <b>{form.anonymous ? "Community member" : account.publicName}</b>
+                      {!form.anonymous && <span className="attribution-note"> — only your first name and last initial are shown</span>}
+                    </p>
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={form.anonymous}
+                        onChange={(e) => setForm({ ...form, anonymous: e.target.checked })}
+                      />
+                      <span>Post without my name</span>
+                    </label>
+                  </>
+                ) : (
+                  <p>
+                    Posting as <b>Community member</b>.{" "}
+                    <button type="button" className="link-button" onClick={() => { setContributionOpen(false); openAuth("signin"); }}>
+                      Sign in
+                    </button>{" "}
+                    to have this credited to you.
+                  </p>
+                )}
               </div>
               <label>Exact location or level
                 <input required maxLength={140} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. East side, Level 2 beside the lift" />
@@ -887,6 +1069,126 @@ export default function Home() {
                 <button className="primary-action" disabled={submitState === "saving"}>{submitState === "saving" ? "Saving…" : "Submit information"}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {toast && <div className="app-toast" role="status">{toast}</div>}
+
+      {authOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setAuthOpen(false); }}>
+          <section className="contribution-modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div className="modal-header">
+              <div>
+                <span className="detail-type">ACCESSRAMP ACCOUNT</span>
+                <h2 id="auth-title">{authMode === "signin" ? "Sign in" : "Create an account"}</h2>
+                <p>
+                  {authMode === "signin"
+                    ? "Your reports keep your name on them, and you can see everything you have added."
+                    : "Only your first name and last initial are ever shown to other people."}
+                </p>
+              </div>
+              <button className="close-detail" onClick={() => setAuthOpen(false)} aria-label="Close">×</button>
+            </div>
+
+            <form onSubmit={submitAuth}>
+              {authMode === "register" && (
+                <label>Your name
+                  <input
+                    required
+                    maxLength={60}
+                    autoComplete="name"
+                    value={authForm.displayName}
+                    onChange={(e) => setAuthForm({ ...authForm, displayName: e.target.value })}
+                    placeholder="e.g. Jason Zhang"
+                  />
+                </label>
+              )}
+              <label>Email
+                <input
+                  required
+                  type="email"
+                  autoComplete="email"
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label>Password
+                <input
+                  required
+                  type="password"
+                  minLength={8}
+                  autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                  placeholder={authMode === "signin" ? "Your password" : "At least 8 characters"}
+                />
+              </label>
+
+              {authError && <p className="form-error">{authError}</p>}
+
+              <div className="modal-actions">
+                <button type="button" className="secondary-button" onClick={() => { setAuthMode(authMode === "signin" ? "register" : "signin"); setAuthError(""); }}>
+                  {authMode === "signin" ? "Create an account" : "I already have one"}
+                </button>
+                <button className="primary-action" disabled={authState === "saving"}>
+                  {authState === "saving" ? "Please wait…" : authMode === "signin" ? "Sign in" : "Create account"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {profileOpen && account && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setProfileOpen(false); }}>
+          <section className="contribution-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+            <div className="modal-header">
+              <div>
+                <span className="detail-type">YOUR PROFILE</span>
+                <h2 id="profile-title">{account.displayName}</h2>
+                <p>Shown publicly as <b>{account.publicName}</b> · {account.email}</p>
+              </div>
+              <button className="close-detail" onClick={() => setProfileOpen(false)} aria-label="Close">×</button>
+            </div>
+
+            <div className="profile-summary">
+              <strong>{myContributions.length}</strong>
+              <span>{myContributions.length === 1 ? "contribution" : "contributions"} so far</span>
+            </div>
+
+            {loadingMine ? (
+              <p className="loading">Loading your contributions…</p>
+            ) : myContributions.length ? (
+              <div className="contribution-list">
+                {myContributions.map((item) => (
+                  <article key={item.id}>
+                    <div>
+                      <b>{item.category}</b>
+                      <span>{item.status === "pending_review" ? "Awaiting review" : item.status}</span>
+                    </div>
+                    <strong>{item.buildingName ?? item.buildingId}</strong>
+                    <p>{item.location} — {item.details}</p>
+                    <small>
+                      {new Date(item.createdAt.replace(" ", "T") + "Z").toLocaleDateString()}
+                      {item.anonymous ? " · posted without your name" : ` · shown as ${account.publicName}`}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="no-contributions">
+                <span aria-hidden="true">＋</span>
+                <b>Nothing yet</b>
+                <p>Pick a building on the map and add the first detail you know.</p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={signOut}>Sign out</button>
+              <button type="button" className="primary-action" onClick={() => setProfileOpen(false)}>Done</button>
+            </div>
           </section>
         </div>
       )}
