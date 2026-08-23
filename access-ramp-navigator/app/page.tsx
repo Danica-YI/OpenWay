@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon, Polyline } from "leaflet";
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";

@@ -3,6 +3,7 @@ import { ensureSchema, getDb } from "../../../db";
 import { accessibilityContributions, contributionReports, users } from "../../../db/schema";
 import { currentUser, publicName } from "../../../lib/auth";
 import { FACILITY_LABELS } from "../../../lib/facilities";
+import { MAX_PHOTO_BYTES, getPhotoBucket } from "../../../lib/photos";
 
 const CATEGORIES = new Set(FACILITY_LABELS);
 
