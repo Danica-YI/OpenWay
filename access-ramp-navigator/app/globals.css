@@ -35,6 +35,8 @@
 
 
 .fetch-status{position:absolute;top:84px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(18,40,59,.92);color:#fff;font-size:12.5px;font-weight:650;padding:7px 15px;border-radius:999px;pointer-events:none}
+.fetch-status.failed{border:0;pointer-events:auto;cursor:pointer;background:rgba(139,44,32,.94);font:inherit;font-size:12.5px;font-weight:650}
+.fetch-status.failed:hover{background:rgba(115,34,24,.96)}
 
 .empty-profile{text-align:center;padding:26px 20px;border:1.5px dashed #c6d2da;border-radius:16px;background:#fbfcfd}
 .empty-profile>span{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:#eef2f5;color:#7b8a97;font-size:25px;font-weight:800}

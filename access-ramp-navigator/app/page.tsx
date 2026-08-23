@@ -261,6 +261,8 @@ export default function Home() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState<string | null>(null);
+  /** Bumped by the retry control so the loader runs again without a pan. */
+  const [reloadToken, setReloadToken] = useState(0);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -769,7 +771,7 @@ export default function Home() {
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [viewport]);
+  }, [viewport, reloadToken]);
 
   // --- community report counts for the buildings on screen ----------------
   useEffect(() => {
@@ -1286,6 +1288,17 @@ export default function Home() {
     }
   }
 
+  /**
+   * Ask again for the area currently in view. Only successful loads are
+   * cached, so nothing has to be evicted first — the loader just needs a
+   * reason to run when the viewport has not changed.
+   */
+  function retryBuildings() {
+    loadedBBox.current = null;
+    setBuildingError(null);
+    setReloadToken((token) => token + 1);
+  }
+
   /** Take me back to my dot. */
   function locateUser() {
     const map = mapInstance.current;
@@ -1421,6 +1434,7 @@ export default function Home() {
                 <span aria-hidden="true">!</span>
                 <strong>Map data unavailable</strong>
                 <p>{buildingError}</p>
+                <button type="button" className="secondary-button" onClick={retryBuildings}>Try again</button>
               </div>
             )}
 
@@ -1475,6 +1489,13 @@ export default function Home() {
           </div>
 
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
+          {!loadingBuildings && buildingError && (
+            // The sidebar carries the same message, but on a phone it is off
+            // screen behind the map, so the failure has to be visible here too.
+            <button type="button" className="fetch-status failed" onClick={retryBuildings}>
+              Buildings unavailable · Tap to retry
+            </button>
+          )}
 
           {pinMode && selected && (
             <section className="pin-placement-bar" aria-live="polite">

@@ -57,7 +57,33 @@ export type MapBuilding = {
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  // Third mirror, reached only when both of the above are down. Operated by
+  // VK/Mail.ru; it sees the requested bounding box and nothing else.
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
+
+/** Give up on the whole lookup rather than hold a pan open indefinitely. */
+const OVERALL_TIMEOUT_MS = 15_000;
+
+/**
+ * How long to wait for one mirror before also trying the next, rather than
+ * only after it fails. A mirror that accepts the connection and then stalls
+ * used to cost its full timeout before anything else was attempted, so a
+ * single dead primary made every pan slow.
+ */
+const HEDGE_DELAY_MS = 2_500;
+
+/**
+ * Which mirror answered last. During an outage the first endpoint burns the
+ * full timeout on every request otherwise, turning one slow load into a slow
+ * load for every pan.
+ */
+let preferredEndpoint: string | null = null;
+
+function endpointsToTry(): string[] {
+  if (!preferredEndpoint) return OVERPASS_ENDPOINTS;
+  return [preferredEndpoint, ...OVERPASS_ENDPOINTS.filter((url) => url !== preferredEndpoint)];
+}
 
 /** Overpass is a shared free service; keep requests small and bounded. */
 export const MAX_BBOX_SPAN = 0.035;
@@ -100,33 +126,72 @@ way["building"](${area})->.b;
 .p out;`;
 }
 
+async function askOverpass(endpoint: string, body: URLSearchParams, signal: AbortSignal): Promise<OverpassElement[]> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    body,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      // Overpass asks that clients identify themselves.
+      "User-Agent": "OpenWay/0.1 (accessibility mapping prototype)",
+    },
+    signal,
+  });
+  if (!response.ok) throw new Error(`Overpass responded ${response.status}`);
+  const payload = (await response.json()) as { elements?: OverpassElement[] };
+  preferredEndpoint = endpoint;
+  return payload.elements ?? [];
+}
+
+/**
+ * Ask the mirrors, staggering rather than queueing.
+ *
+ * Overpass is a free shared service, so the usual request is still a single
+ * one: a later mirror is only brought in once an earlier one has had its head
+ * start and produced nothing. That keeps the healthy path unchanged while an
+ * outage costs seconds instead of the sum of every timeout.
+ */
 export async function fetchOverpass(bbox: BBox): Promise<OverpassElement[]> {
   const body = new URLSearchParams({ data: buildQuery(bbox) });
-  let lastError: unknown = null;
+  const endpoints = endpointsToTry();
+  const controller = new AbortController();
+  const overall = setTimeout(() => controller.abort(), OVERALL_TIMEOUT_MS);
+  const staggers: ReturnType<typeof setTimeout>[] = [];
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          // Overpass asks that clients identify themselves.
-          "User-Agent": "OpenWay/0.1 (accessibility mapping prototype)",
-        },
-      });
-      if (!response.ok) {
-        lastError = new Error(`Overpass responded ${response.status}`);
-        continue;
+  const attempt = (endpoint: string, delay: number) =>
+    new Promise<OverpassElement[]>((resolve, reject) => {
+      if (delay === 0) {
+        askOverpass(endpoint, body, controller.signal).then(resolve, reject);
+        return;
       }
-      const payload = (await response.json()) as { elements?: OverpassElement[] };
-      return payload.elements ?? [];
-    } catch (error) {
-      lastError = error;
-    }
-  }
+      const timer = setTimeout(() => {
+        if (controller.signal.aborted) {
+          reject(new Error("Overpass lookup cancelled"));
+          return;
+        }
+        askOverpass(endpoint, body, controller.signal).then(resolve, reject);
+      }, delay);
+      staggers.push(timer);
+      controller.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("Overpass lookup cancelled"));
+      }, { once: true });
+    });
 
-  throw lastError ?? new Error("Overpass is unreachable");
+  try {
+    // Resolves on the first mirror to answer; rejects only if all of them fail.
+    return await Promise.any(endpoints.map((endpoint, index) => attempt(endpoint, index * HEDGE_DELAY_MS)));
+  } catch (error) {
+    // Every mirror failed, so stop preferring whichever one used to work.
+    preferredEndpoint = null;
+    if (error instanceof AggregateError) throw error.errors[0] ?? new Error("Overpass is unreachable");
+    throw error;
+  } finally {
+    // Whoever answered first, nobody else needs to keep waiting.
+    clearTimeout(overall);
+    staggers.forEach(clearTimeout);
+    controller.abort();
+  }
 }
 
 function accessLevel(value: string | undefined): AccessLevel {
