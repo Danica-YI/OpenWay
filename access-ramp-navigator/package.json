@@ -1,5 +1,5 @@
 {
-  "name": "access-ramp-navigator",
+  "name": "openway",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -45,5 +45,5 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "AccessRamp Navigator"
+  "displayName": "OpenWay"
 }

@@ -1,4 +1,4 @@
-# AccessRamp Navigator
+# OpenWay
 
 Detailed building accessibility information for every building on the map — not
 just the handful someone has surveyed.
@@ -71,6 +71,21 @@ in the UI:
 3. **Community reports** in Cloudflare D1, keyed by OpenStreetMap id so any
    building on Earth can be reported on.
 
+## Accounts
+
+Sign-up is self-contained: no identity provider to configure, so a teammate can
+clone the repo and create an account straight away. Passwords are PBKDF2-SHA256
+with a per-user salt; sessions are opaque random tokens stored in D1, so the
+cookie carries no claims of its own and signing out revokes it server-side.
+
+Attribution is deliberately partial. A contributor is shown as **first name plus
+last initial** ("Jason Z."), never their full name or email, and any report can
+be posted without a name at all. A person's own profile lists everything they
+have added, including the anonymous ones.
+
+Contributing without an account still works; those reports are credited to
+"Community member".
+
 ### Important files
 
 | Path | Purpose |
@@ -82,6 +97,9 @@ in the UI:
 | `app/api/contributions/route.ts` | Community report read/write |
 | `app/api/contributions/counts/route.ts` | Report counts, for map colouring |
 | `app/globals.css` | The complete responsive design |
+| `lib/auth.ts` | Password hashing, sessions, public-name rule |
+| `app/api/auth/` | Register, sign in, sign out, current user |
+| `app/api/me/contributions/` | A person's own contribution list |
 | `db/schema.ts` | Database schema |
 | `.openai/hosting.json` | Cloudflare binding names — **required for the dev server to start** |
 

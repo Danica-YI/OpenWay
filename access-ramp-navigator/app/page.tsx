@@ -12,6 +12,20 @@ type Tab = "details" | "route" | "community";
 /** How complete a building's accessibility picture is. Drives the map colours. */
 type InfoStatus = "surveyed" | "mapped" | "reported" | "unknown";
 
+type Account = { id: number; email: string; displayName: string; publicName: string };
+
+type MyContribution = {
+  id: number;
+  buildingId: string;
+  buildingName: string | null;
+  category: string;
+  location: string;
+  details: string;
+  status: string;
+  anonymous: boolean;
+  createdAt: string;
+};
+
 type Contribution = {
   id: number;
   buildingId: string;
@@ -23,6 +37,7 @@ type Contribution = {
   longitude: number | null;
   status: string;
   createdAt: string;
+  mine?: boolean;
 };
 
 // --- Demo venue ----------------------------------------------------------
@@ -114,6 +129,21 @@ function drawerSideWidth(map: LeafletMap): number {
   return isSidePanel ? drawerRect.width : 0;
 }
 
+/**
+ * The same problem in the other axis: on narrow viewports the drawer is a
+ * full-width sheet pinned to the bottom of the screen, so map framing that
+ * ignores it drops the selected building behind the sheet. Returns the sheet's
+ * height in px when it is laid out that way, else 0.
+ */
+function drawerBottomHeight(map: LeafletMap): number {
+  const drawerEl = document.querySelector(".building-drawer");
+  if (!drawerEl) return 0;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const drawerRect = drawerEl.getBoundingClientRect();
+  const isBottomSheet = drawerRect.width >= mapRect.width * 0.7;
+  return isBottomSheet ? Math.min(drawerRect.height, mapRect.height) : 0;
+}
+
 export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<LeafletMap | null>(null);
@@ -144,6 +174,18 @@ export default function Home() {
   const [location, setLocation] = useState<LatLng>(DEMO_START);
   const [locationMessage, setLocationMessage] = useState("Demo starting point");
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "register">("signin");
+  const [authForm, setAuthForm] = useState({ email: "", displayName: "", password: "" });
+  const [authState, setAuthState] = useState<"idle" | "saving">("idle");
+  const [authError, setAuthError] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [myContributions, setMyContributions] = useState<MyContribution[]>([]);
+  const [loadingMine, setLoadingMine] = useState(false);
+  const [toast, setToast] = useState("");
   const [contributionOpen, setContributionOpen] = useState(false);
   const [pinMode, setPinMode] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
@@ -158,6 +200,7 @@ export default function Home() {
     latitude: null as number | null,
     longitude: null as number | null,
   });
+  const [form, setForm] = useState({ category: "Ramp", location: "", details: "", anonymous: false });
 
   // Derived, not stored: the viewport already tells us whether we are too far out.
   const needsZoom = viewport !== null && viewport.zoom < MIN_ZOOM;
@@ -269,12 +312,14 @@ export default function Home() {
     removeDraftPin();
     setPinMode(false);
     setForm({ category: "Ramp", location: "", details: "", contributor: "", latitude: null, longitude: null });
+    setForm({ category: "Ramp", location: "", details: "", anonymous: false });
     setSubmitState("idle");
     setFormError("");
     setContributionOpen(true);
   }, [removeDraftPin]);
 
   const chooseBuilding = useCallback((id: string, tab: Tab = "details") => {
+    setMenuOpen(false);
     setSelectedId(id);
     setActiveTab(tab);
     setDetailOpen(true);
@@ -310,6 +355,7 @@ export default function Home() {
   // --- map bootstrap -------------------------------------------------------
   useEffect(() => {
     let active = true;
+    let releaseObserver: (() => void) | null = null;
     const shapeStore = shapes.current;
     async function createMap() {
       if (!mapElement.current || mapInstance.current) return;
@@ -319,6 +365,13 @@ export default function Home() {
       const map = L.map(mapElement.current, { zoomControl: false, zoomSnap: 0.5 }).setView(DEFAULT_CENTER, 17);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+      const map = L.map(mapElement.current, { zoomControl: false }).setView(DEFAULT_CENTER, 17);
+      // On a phone the bottom of the map belongs to the profile sheet, so the
+      // zoom buttons join the locate button in a vertical stack on the right.
+      L.control
+        .zoom({ position: window.matchMedia("(max-width: 760px)").matches ? "topright" : "bottomright" })
+        .addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 20,
         subdomains: "abcd",
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
@@ -335,6 +388,12 @@ export default function Home() {
       });
       userMarker.current = L.marker(DEMO_START, { icon: userIcon, title: "Your starting point" }).addTo(map);
 
+      // Rotation, the on-screen keyboard and layout changes all resize the map
+      // container behind Leaflet's back.
+      const resizeObserver = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+      resizeObserver.observe(map.getContainer());
+      releaseObserver = () => resizeObserver.disconnect();
+
       const syncViewport = () => {
         const bounds = map.getBounds();
         setViewport({
@@ -350,6 +409,7 @@ export default function Home() {
     createMap();
     return () => {
       active = false;
+      releaseObserver?.();
       mapInstance.current?.remove();
       mapInstance.current = null;
       accessPointLayer.current = null;
@@ -481,12 +541,16 @@ export default function Home() {
   useEffect(() => {
     if (!selected || !mapInstance.current) return;
     const map = mapInstance.current;
+    // Opening a profile hides the mobile sidebar, which grows the map panel.
+    // Leaflet caches its container size, so re-measure before framing.
+    map.invalidateSize({ animate: false });
     const zoom = Math.max(map.getZoom(), 18);
 
     let target: LatLng = selected.center;
     const drawerWidth = drawerSideWidth(map);
-    if (drawerWidth > 0) {
-      const shifted = map.project(selected.center, zoom).add([drawerWidth / 2, 0]);
+    const sheetHeight = drawerBottomHeight(map);
+    if (drawerWidth > 0 || sheetHeight > 0) {
+      const shifted = map.project(selected.center, zoom).add([drawerWidth / 2, sheetHeight / 2]);
       const unprojected = map.unproject(shifted, zoom);
       target = [unprojected.lat, unprojected.lng];
     }
@@ -494,50 +558,23 @@ export default function Home() {
     map.flyTo(target, zoom, { duration: 0.6 });
   }, [selected]);
 
-  // --- route to the entrance: real walking path when available, else a direct line ---
+  // --- fetch the walking route in the background as soon as a building is
+  // selected, not gated on the Route tab being open. The public routing
+  // service takes ~1s to respond, so starting this early (while someone is
+  // still reading the Accessibility tab) means it's often already loaded by
+  // the time they actually click "Route" — instead of watching it happen.
   useEffect(() => {
     let ignore = false;
-    async function drawRoute() {
-      const map = mapInstance.current;
-      if (!map) return;
-      const L = await import("leaflet");
-      routeLine.current?.remove();
-      routeLine.current = null;
-      routeHalo.current?.remove();
-      routeHalo.current = null;
+
+    (async () => {
       setWalkingRoute(null);
-      if (!routeVisible || !selected) return;
-
+      if (!selected) return;
       const target = routeEntrance?.point ?? selected.center;
-
-      function render(onMap: LeafletMap, points: LatLng[], dashed: boolean) {
-        routeHalo.current?.remove();
-        routeLine.current?.remove();
-        routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(onMap);
-        routeLine.current = L.polyline(points, {
-          color: "#087f73",
-          weight: 6,
-          opacity: 1,
-          lineCap: "round",
-          dashArray: dashed ? "10 8" : undefined,
-        }).addTo(onMap);
-        onMap.fitBounds(routeLine.current.getBounds(), {
-          paddingTopLeft: [70, 70],
-          paddingBottomRight: [70 + drawerSideWidth(onMap), 70],
-          maxZoom: 18,
-        });
-      }
-
-      // Draw the direct line immediately so there's something on screen while the
-      // real walking route loads, then swap it for the real path if one is found.
-      render(map, [location, target], true);
-
       try {
         const response = await fetch(`/api/route?from=${location[0]},${location[1]}&to=${target[0]},${target[1]}`);
         const payload = (await response.json()) as Partial<WalkingRoute>;
-        if (ignore || !routeVisible || !mapInstance.current) return;
+        if (ignore) return;
         if (response.ok && payload.points && payload.points.length > 1) {
-          render(mapInstance.current, payload.points, false);
           setWalkingRoute({
             points: payload.points,
             distanceMetres: payload.distanceMetres ?? 0,
@@ -546,12 +583,48 @@ export default function Home() {
           });
         }
       } catch {
-        // Network hiccup: leave the direct-line fallback already on the map.
+        // Network hiccup: the drawing effect below falls back to a direct line.
       }
-    }
-    drawRoute();
+    })();
+
     return () => { ignore = true; };
-  }, [location, routeVisible, selected, routeEntrance]);
+  }, [location, selected, routeEntrance]);
+
+  // --- draw the route on the map whenever the Route tab is open: the real
+  // walking path once it's loaded, else a direct dashed line as a placeholder ---
+  useEffect(() => {
+    let cancelled = false;
+    async function draw() {
+      const map = mapInstance.current;
+      routeLine.current?.remove();
+      routeLine.current = null;
+      routeHalo.current?.remove();
+      routeHalo.current = null;
+      if (!map || !routeVisible || !selected) return;
+
+      const target = routeEntrance?.point ?? selected.center;
+      const points = walkingRoute?.points ?? [location, target];
+      const dashed = !walkingRoute;
+
+      const L = await import("leaflet");
+      if (cancelled || mapInstance.current !== map) return;
+      routeHalo.current = L.polyline(points, { color: "#fff", weight: 11, opacity: 0.94, lineCap: "round" }).addTo(map);
+      routeLine.current = L.polyline(points, {
+        color: "#087f73",
+        weight: 6,
+        opacity: 1,
+        lineCap: "round",
+        dashArray: dashed ? "10 8" : undefined,
+      }).addTo(map);
+      map.fitBounds(routeLine.current.getBounds(), {
+        paddingTopLeft: [70, 70],
+        paddingBottomRight: [70 + drawerSideWidth(map), 70 + drawerBottomHeight(map)],
+        maxZoom: 18,
+      });
+    }
+    draw();
+    return () => { cancelled = true; };
+  }, [routeVisible, walkingRoute, selected, location, routeEntrance]);
 
   // --- community reports for the selected building ------------------------
   useEffect(() => {
@@ -610,6 +683,36 @@ export default function Home() {
     void drawAccessPoints();
     return () => { ignore = true; };
   }, [contributions]);
+  // --- who is signed in ---------------------------------------------------
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        const payload = (await response.json()) as { user?: Account | null };
+        if (!ignore) setAccount(payload.user ?? null);
+      } catch {
+        /* signed out is the safe assumption */
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  // --- browse panel keyboard handling -------------------------------------
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   // --- modal keyboard handling --------------------------------------------
   useEffect(() => {
@@ -621,6 +724,78 @@ export default function Home() {
     modalRef.current?.querySelector<HTMLElement>("select, input, textarea")?.focus();
     return () => window.removeEventListener("keydown", onKey);
   }, [closeContribution, contributionOpen]);
+
+  function openAuth(mode: "signin" | "register") {
+    setAuthMode(mode);
+    setAuthForm({ email: "", displayName: "", password: "" });
+    setAuthError("");
+    setAuthState("idle");
+    setMenuOpen(false);
+    setAuthOpen(true);
+  }
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthState("saving");
+    setAuthError("");
+    try {
+      const endpoint = authMode === "signin" ? "/api/auth/login" : "/api/auth/register";
+      const body = authMode === "signin"
+        ? { email: authForm.email, password: authForm.password }
+        : authForm;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as { user?: Account; error?: string };
+      if (!response.ok || !payload.user) throw new Error(payload.error ?? "That did not work");
+      setAccount(payload.user);
+      setAuthOpen(false);
+      setToast(authMode === "signin" ? `Signed in as ${payload.user.publicName}` : `Welcome, ${payload.user.publicName}`);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "That did not work");
+    } finally {
+      setAuthState("idle");
+    }
+  }
+
+  async function signOut() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      /* the cookie is cleared server-side; fall through either way */
+    }
+    setAccount(null);
+    setProfileOpen(false);
+    setMenuOpen(false);
+    setToast("Signed out");
+  }
+
+  async function openProfile() {
+    setMenuOpen(false);
+    setProfileOpen(true);
+    setLoadingMine(true);
+    try {
+      const response = await fetch("/api/me/contributions");
+      const payload = (await response.json()) as { contributions?: MyContribution[] };
+      setMyContributions(payload.contributions ?? []);
+    } catch {
+      setMyContributions([]);
+    } finally {
+      setLoadingMine(false);
+    }
+  }
+
+  /** The contribute action needs a building, so say so rather than sitting disabled. */
+  function startContribution() {
+    setMenuOpen(false);
+    if (!selectedId) {
+      setToast("Tap a building on the map first");
+      return;
+    }
+    openContribution();
+  }
 
   async function submitContribution(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -636,7 +811,7 @@ export default function Home() {
       const response = await fetch("/api/contributions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, buildingId: selectedId }),
+        body: JSON.stringify({ ...form, buildingId: selectedId, buildingName: selected ? displayName(selected) : null }),
       });
       const payload = (await response.json()) as { contribution?: Contribution; error?: string };
       if (!response.ok || !payload.contribution) throw new Error(payload.error ?? "Submission failed");
@@ -683,20 +858,63 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="AccessRamp home">
+        <a className="brand" href="#top" aria-label="OpenWay home">
           <span className="brand-mark">♿</span>
-          <span>Access<span>Ramp</span></span>
+          <span>Open<span>Way</span></span>
         </a>
-        <div className="header-status">
-          <span className="status-dot" /> Every building, not just the mapped ones
+        <div className="topbar-account">
+          <AccountControls
+            account={account}
+            variant="bar"
+            onSignIn={() => openAuth("signin")}
+            onRegister={() => openAuth("register")}
+            onProfile={openProfile}
+            onSignOut={signOut}
+          />
         </div>
+
         <button className="report-button" type="button" onClick={openContribution} disabled={!selectedId}>
           <span aria-hidden="true">＋</span> {selectedId ? "Contribute accessibility info" : "Select a building first"}
         </button>
+
+        <button className="icon-action contribute-icon" type="button" onClick={startContribution} aria-label="Contribute accessibility info" title="Contribute accessibility info">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+
+        <button
+          className={menuOpen ? "menu-toggle open" : "menu-toggle"}
+          type="button"
+          aria-label={menuOpen ? "Close building list" : "Open building list"}
+          aria-expanded={menuOpen}
+          aria-controls="browse-panel"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+        </button>
       </header>
 
-      <section className="workspace" id="top">
-        <aside className="sidebar" aria-label="Buildings in view">
+      <section className={`workspace${detailOpen && selected ? " detail-open" : ""}${menuOpen ? " menu-open" : ""}`} id="top">
+        <aside className="sidebar" id="browse-panel" aria-label="Buildings in view">
+          <div className="panel-account">
+            <AccountControls
+              account={account}
+              variant="panel"
+              onSignIn={() => openAuth("signin")}
+              onRegister={() => openAuth("register")}
+              onProfile={openProfile}
+              onSignOut={signOut}
+            />
+          </div>
+
+          <button className="panel-contribute" type="button" onClick={startContribution}>
+            <span aria-hidden="true">＋</span>
+            {selectedId && selected ? `Add info about ${displayName(selected)}` : "Contribute accessibility info"}
+          </button>
+
           <div className="sidebar-heading">
             <p className="eyebrow">KNOW BEFORE YOU ARRIVE</p>
             <h1>Every access detail, in one place.</h1>
@@ -779,8 +997,14 @@ export default function Home() {
           <div ref={mapElement} className="map" />
 
           <div className="map-top-controls">
-            <button className="locate-button" type="button" onClick={locateUser}>
-              <span aria-hidden="true">◎</span>
+            <button className="locate-button" type="button" onClick={locateUser} aria-label={`Use my location. ${locationMessage}`} title="Use my location">
+              <span aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+                  <path d="M12 1.5v3.2M12 19.3v3.2M1.5 12h3.2M19.3 12h3.2" />
+                </svg>
+              </span>
               <span><b>Use my location</b><small>{locationMessage}</small></span>
             </button>
             <div className="map-legend" role="note" aria-label="Map colour key">
@@ -814,14 +1038,23 @@ export default function Home() {
           )}
 
           {detailOpen && selected && (
-            <article className="building-drawer" aria-live="polite">
+            <article className={sheetExpanded ? "building-drawer expanded" : "building-drawer"} aria-live="polite">
+              <button
+                className="sheet-handle"
+                type="button"
+                aria-label={sheetExpanded ? "Collapse building details" : "Expand building details"}
+                aria-expanded={sheetExpanded}
+                onClick={() => setSheetExpanded((open) => !open)}
+              >
+                <span aria-hidden="true" />
+              </button>
               <div className="drawer-header">
                 <div>
                   <span className="detail-type">BUILDING ACCESS PROFILE</span>
                   <h2>{displayName(selected)}</h2>
                   <p>{selected.kind}{selected.address ? ` · ${selected.address}` : ""}{selected.levels ? ` · ${selected.levels} levels` : ""}</p>
                 </div>
-                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); }}>×</button>
+                <button className="close-detail" type="button" aria-label="Close building details" onClick={() => { setDetailOpen(false); setRouteVisible(false); setSheetExpanded(false); }}>×</button>
               </div>
 
               <div className="profile-meta">
@@ -968,6 +1201,40 @@ export default function Home() {
                 <label><span>Your name <small>(optional)</small></span>
                   <input value={form.contributor} maxLength={60} onChange={(e) => setForm({ ...form, contributor: e.target.value })} placeholder="Community member" />
                 </label>
+              <label>Accessibility feature
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                  <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
+                  <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
+                </select>
+              </label>
+
+              {/* Attribution comes from the account, not a free-text name field
+                  anyone could put someone else's name into. */}
+              <div className="attribution-choice">
+                {account ? (
+                  <>
+                    <p>
+                      Posting as <b>{form.anonymous ? "Community member" : account.publicName}</b>
+                      {!form.anonymous && <span className="attribution-note"> — only your first name and last initial are shown</span>}
+                    </p>
+                    <label className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={form.anonymous}
+                        onChange={(e) => setForm({ ...form, anonymous: e.target.checked })}
+                      />
+                      <span>Post without my name</span>
+                    </label>
+                  </>
+                ) : (
+                  <p>
+                    Posting as <b>Community member</b>.{" "}
+                    <button type="button" className="link-button" onClick={() => { setContributionOpen(false); openAuth("signin"); }}>
+                      Sign in
+                    </button>{" "}
+                    to have this credited to you.
+                  </p>
+                )}
               </div>
               <label>Exact location or level
                 <input required maxLength={140} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. East side, Level 2 beside the lift" />
@@ -986,6 +1253,126 @@ export default function Home() {
                 <button className="primary-action" disabled={submitState === "saving"}>{submitState === "saving" ? "Saving…" : "Submit information"}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {toast && <div className="app-toast" role="status">{toast}</div>}
+
+      {authOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setAuthOpen(false); }}>
+          <section className="contribution-modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div className="modal-header">
+              <div>
+                <span className="detail-type">OPENWAY ACCOUNT</span>
+                <h2 id="auth-title">{authMode === "signin" ? "Sign in" : "Create an account"}</h2>
+                <p>
+                  {authMode === "signin"
+                    ? "Your reports keep your name on them, and you can see everything you have added."
+                    : "Only your first name and last initial are ever shown to other people."}
+                </p>
+              </div>
+              <button className="close-detail" onClick={() => setAuthOpen(false)} aria-label="Close">×</button>
+            </div>
+
+            <form onSubmit={submitAuth}>
+              {authMode === "register" && (
+                <label>Your name
+                  <input
+                    required
+                    maxLength={60}
+                    autoComplete="name"
+                    value={authForm.displayName}
+                    onChange={(e) => setAuthForm({ ...authForm, displayName: e.target.value })}
+                    placeholder="e.g. Jason Zhang"
+                  />
+                </label>
+              )}
+              <label>Email
+                <input
+                  required
+                  type="email"
+                  autoComplete="email"
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                  placeholder="you@example.com"
+                />
+              </label>
+              <label>Password
+                <input
+                  required
+                  type="password"
+                  minLength={8}
+                  autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                  placeholder={authMode === "signin" ? "Your password" : "At least 8 characters"}
+                />
+              </label>
+
+              {authError && <p className="form-error">{authError}</p>}
+
+              <div className="modal-actions">
+                <button type="button" className="secondary-button" onClick={() => { setAuthMode(authMode === "signin" ? "register" : "signin"); setAuthError(""); }}>
+                  {authMode === "signin" ? "Create an account" : "I already have one"}
+                </button>
+                <button className="primary-action" disabled={authState === "saving"}>
+                  {authState === "saving" ? "Please wait…" : authMode === "signin" ? "Sign in" : "Create account"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {profileOpen && account && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setProfileOpen(false); }}>
+          <section className="contribution-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+            <div className="modal-header">
+              <div>
+                <span className="detail-type">YOUR PROFILE</span>
+                <h2 id="profile-title">{account.displayName}</h2>
+                <p>Shown publicly as <b>{account.publicName}</b> · {account.email}</p>
+              </div>
+              <button className="close-detail" onClick={() => setProfileOpen(false)} aria-label="Close">×</button>
+            </div>
+
+            <div className="profile-summary">
+              <strong>{myContributions.length}</strong>
+              <span>{myContributions.length === 1 ? "contribution" : "contributions"} so far</span>
+            </div>
+
+            {loadingMine ? (
+              <p className="loading">Loading your contributions…</p>
+            ) : myContributions.length ? (
+              <div className="contribution-list">
+                {myContributions.map((item) => (
+                  <article key={item.id}>
+                    <div>
+                      <b>{item.category}</b>
+                      <span>{item.status === "pending_review" ? "Awaiting review" : item.status}</span>
+                    </div>
+                    <strong>{item.buildingName ?? item.buildingId}</strong>
+                    <p>{item.location} — {item.details}</p>
+                    <small>
+                      {new Date(item.createdAt.replace(" ", "T") + "Z").toLocaleDateString()}
+                      {item.anonymous ? " · posted without your name" : ` · shown as ${account.publicName}`}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="no-contributions">
+                <span aria-hidden="true">＋</span>
+                <b>Nothing yet</b>
+                <p>Pick a building on the map and add the first detail you know.</p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={signOut}>Sign out</button>
+              <button type="button" className="primary-action" onClick={() => setProfileOpen(false)}>Done</button>
+            </div>
           </section>
         </div>
       )}
@@ -1050,7 +1437,7 @@ function OsmSections({ building, onContribute, reportCount }: { building: MapBui
           {building.address ? ` and address (${building.address})` : ""}, but nothing about entrances, ramps, toilets or lifts.
         </p>
         <p className="gap-note">
-          This is exactly the gap AccessRamp exists to close. {reportCount > 0 ? `${reportCount} community report${reportCount > 1 ? "s" : ""} already added.` : "Be the first to add a detail."}
+          This is exactly the gap OpenWay exists to close. {reportCount > 0 ? `${reportCount} community report${reportCount > 1 ? "s" : ""} already added.` : "Be the first to add a detail."}
         </p>
         <button type="button" className="primary-action full" onClick={onContribute}>＋ Add the first detail</button>
       </section>
@@ -1122,6 +1509,58 @@ function OsmSections({ building, onContribute, reportCount }: { building: MapBui
         <button type="button" className="primary-action full" onClick={onContribute}>＋ Add what you know</button>
       </section>
     </>
+  );
+}
+
+/**
+ * Account state lives in the header on wide screens and in the browse panel on
+ * phones, where the header has no room. One component, mounted twice, so the
+ * two never drift apart; CSS decides which one is on screen.
+ */
+function AccountControls({
+  account,
+  variant,
+  onSignIn,
+  onRegister,
+  onProfile,
+  onSignOut,
+}: {
+  account: Account | null;
+  variant: "bar" | "panel";
+  onSignIn: () => void;
+  onRegister: () => void;
+  onProfile: () => void;
+  onSignOut: () => void;
+}) {
+  if (!account) {
+    return (
+      <div className={`account-controls ${variant}`}>
+        {variant === "panel" && (
+          <div className="account-copy">
+            <strong>Not signed in</strong>
+            <small>Sign in to have your reports credited to you</small>
+          </div>
+        )}
+        <div className="account-actions">
+          <button type="button" onClick={onSignIn}>Sign in</button>
+          <button type="button" onClick={onRegister}>Create account</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`account-controls ${variant}`}>
+      <span className="account-avatar" aria-hidden="true">{account.displayName.trim().slice(0, 1).toUpperCase()}</span>
+      <div className="account-copy">
+        <strong>{variant === "bar" ? account.publicName : account.displayName}</strong>
+        {variant === "panel" && <small>Shown publicly as {account.publicName}</small>}
+      </div>
+      <div className="account-actions">
+        <button type="button" onClick={onProfile}>My contributions</button>
+        <button type="button" onClick={onSignOut}>Sign out</button>
+      </div>
+    </div>
   );
 }
 

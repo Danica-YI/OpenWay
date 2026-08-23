@@ -1,5 +1,5 @@
 import { inArray, sql } from "drizzle-orm";
-import { getDb } from "../../../../db";
+import { ensureSchema, getDb } from "../../../../db";
 import { accessibilityContributions } from "../../../../db/schema";
 
 const BUILDING_ID = /^(way|relation|node)\/\d{1,15}$/;
@@ -19,6 +19,9 @@ export async function POST(request: Request) {
 
     const db = await getDb();
     const rows = await db
+    await ensureSchema();
+
+    const rows = await getDb()
       .select({ buildingId: accessibilityContributions.buildingId, total: sql<number>`count(*)` })
       .from(accessibilityContributions)
       .where(inArray(accessibilityContributions.buildingId, ids))
