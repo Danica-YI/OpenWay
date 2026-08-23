@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { ensureSchema, getDb } from "../../../db";
-import { accessibilityContributions, users } from "../../../db/schema";
+import { accessibilityContributions, contributionReports, users } from "../../../db/schema";
 import { currentUser, publicName } from "../../../lib/auth";
 import { FACILITY_LABELS } from "../../../lib/facilities";
 
@@ -79,14 +79,18 @@ export async function GET(request: Request) {
       .limit(30);
 
     const viewer = await currentUser(request);
+    const flagged = await countReports(db, rows.map((row) => row.id));
     const contributions = rows.map(({ storedName, authorName, authorId, anonymous, photoKey, ...rest }) => ({
       ...rest,
       photoUrl: photoKey ? `/api/contributions/photo?id=${rest.id}` : null,
       contributor: credit({ anonymous, storedName, authorName }),
       mine: viewer != null && authorId === viewer.id,
+      reportCount: flagged.get(rest.id) ?? 0,
     }));
 
-    return Response.json({ contributions });
+    // Everyone is a moderator for the demo, so the client only needs to know
+    // whether somebody is signed in to decide what to offer.
+    return Response.json({ contributions, canModerate: viewer != null });
   } catch {
     return Response.json({ error: "Community information is temporarily unavailable" }, { status: 500 });
   }
@@ -201,5 +205,43 @@ export async function POST(request: Request) {
       }
     }
     return Response.json({ error: "The contribution could not be saved" }, { status: 500 });
+  }
+}
+
+/** How many people have flagged each of these contributions. */
+async function countReports(db: Awaited<ReturnType<typeof getDb>>, ids: number[]): Promise<Map<number, number>> {
+  if (!ids.length) return new Map();
+  const rows = await db
+    .select({ contributionId: contributionReports.contributionId, total: sql<number>`count(*)` })
+    .from(contributionReports)
+    .where(inArray(contributionReports.contributionId, ids))
+    .groupBy(contributionReports.contributionId);
+  return new Map(rows.map((row) => [row.contributionId, Number(row.total)]));
+}
+
+/**
+ * Remove a community report that turned out to be wrong.
+ *
+ * Demo rule: every signed-in account can moderate. Signing in is still
+ * required, so a stray request cannot empty the map during the pitch.
+ */
+export async function DELETE(request: Request) {
+  try {
+    const id = Number(new URL(request.url).searchParams.get("id"));
+    if (!Number.isInteger(id) || id < 1) return Response.json({ error: "Unknown report" }, { status: 400 });
+
+    await ensureSchema();
+    const moderator = await currentUser(request);
+    if (!moderator) return Response.json({ error: "Sign in to moderate" }, { status: 401 });
+
+    const db = await getDb();
+    // The flags go with it, so a re-added detail does not inherit old disputes.
+    await db.delete(contributionReports).where(eq(contributionReports.contributionId, id));
+    const removed = await db.delete(accessibilityContributions).where(eq(accessibilityContributions.id, id)).returning({ id: accessibilityContributions.id });
+    if (!removed.length) return Response.json({ error: "That report has already been removed" }, { status: 404 });
+
+    return Response.json({ removed: id });
+  } catch {
+    return Response.json({ error: "Could not remove that report just now" }, { status: 500 });
   }
 }

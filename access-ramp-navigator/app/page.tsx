@@ -5,6 +5,7 @@ import type { LeafletMouseEvent, LayerGroup, Map as LeafletMap, Marker, Polygon,
 import { parseCompassWord, pointOnSide, type AccessLevel, type BBox, type LatLng, type MapBuilding, type OsmEntrance } from "../lib/osm";
 import { CURATED, type SurveyedProfile } from "../lib/curated";
 import { FACILITIES, facilityFor, facilityGlyphMarkup, type Facility } from "../lib/facilities";
+import { REPORT_REASONS } from "../lib/moderation";
 import type { WalkingRoute } from "../lib/routing";
 
 /** The same glyph the map pins use, for lists and the contribution form. */
@@ -43,6 +44,7 @@ type MyContribution = {
   anonymous: boolean;
   photoUrl: string | null;
   createdAt: string;
+  reportCount?: number;
 };
 
 type Contribution = {
@@ -62,6 +64,7 @@ type Contribution = {
   status: string;
   createdAt: string;
   mine?: boolean;
+  reportCount?: number;
 };
 
 type CapturedPhoto = {
@@ -262,6 +265,14 @@ export default function Home() {
   const [pinMode, setPinMode] = useState(false);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loadingContributions, setLoadingContributions] = useState(false);
+  // Everyone signed in can moderate for the demo; the server decides, not us.
+  const [canModerate, setCanModerate] = useState(false);
+  const [reportingId, setReportingId] = useState<number | null>(null);
+  const [reportReason, setReportReason] = useState(REPORT_REASONS[0]);
+  const [reportNote, setReportNote] = useState("");
+  const [reportState, setReportState] = useState<"idle" | "saving">("idle");
+  const [removingId, setRemovingId] = useState<number | null>(null);
+  const [moderationError, setModerationError] = useState("");
   const [submitState, setSubmitState] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [formError, setFormError] = useState("");
   const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
@@ -423,6 +434,67 @@ export default function Home() {
     })();
     return () => { ignore = true; };
   }, [form.category]);
+
+  const openReport = useCallback((id: number) => {
+    setReportingId(id);
+    setReportReason(REPORT_REASONS[0]);
+    setReportNote("");
+    setRemovingId(null);
+    setModerationError("");
+  }, []);
+
+  const submitReport = useCallback(async (id: number) => {
+    setReportState("saving");
+    setModerationError("");
+    try {
+      const response = await fetch("/api/contributions/report", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contributionId: id, reason: reportReason, details: reportNote }),
+      });
+      const payload = (await response.json()) as { error?: string; alreadyReported?: boolean };
+      if (!response.ok) {
+        setModerationError(payload.error ?? "Could not flag that detail just now");
+        return;
+      }
+      setReportingId(null);
+      // A second flag from the same person is accepted but not counted twice,
+      // so only move the number when the server actually recorded one.
+      if (!payload.alreadyReported) {
+        setContributions((items) => items.map((item) => (
+          item.id === id ? { ...item, reportCount: (item.reportCount ?? 0) + 1 } : item
+        )));
+      }
+      setToast(payload.alreadyReported ? "You have already flagged this detail" : "Thanks — flagged for review");
+    } catch {
+      setModerationError("Could not flag that detail just now");
+    } finally {
+      setReportState("idle");
+    }
+  }, [reportReason, reportNote]);
+
+  const removeContribution = useCallback(async (id: number) => {
+    setModerationError("");
+    try {
+      const response = await fetch(`/api/contributions?id=${id}`, { method: "DELETE" });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setModerationError(payload.error ?? "Could not remove that detail just now");
+        return;
+      }
+      setContributions((items) => items.filter((item) => item.id !== id));
+      // Keep the building's report tally on the list in step with the removal.
+      setCounts((current) => {
+        if (!selectedId) return current;
+        const remaining = Math.max((current[selectedId] ?? 1) - 1, 0);
+        return { ...current, [selectedId]: remaining };
+      });
+      setRemovingId(null);
+      setToast("Removed from the map");
+    } catch {
+      setModerationError("Could not remove that detail just now");
+    }
+  }, [selectedId]);
 
   const closeContribution = useCallback(() => {
     setContributionOpen(false);
@@ -831,7 +903,7 @@ export default function Home() {
 
       const MARGIN = 28;
       const limit = sheetTop - MARGIN;
-      const topInset = 74; // clear of the legend and locate button
+      const topInset = 74; // clear of the locate button
       if (limit <= topInset) return; // sheet covers the map; nothing sensible to show
 
       const point = current.latLngToContainerPoint(centre);
@@ -897,8 +969,11 @@ export default function Home() {
       setLoadingContributions(true);
       try {
         const response = await fetch(`/api/contributions?buildingId=${encodeURIComponent(selectedId)}`);
-        const payload = (await response.json()) as { contributions?: Contribution[] };
-        if (!ignore) setContributions(payload.contributions ?? []);
+        const payload = (await response.json()) as { contributions?: Contribution[]; canModerate?: boolean };
+        if (!ignore) {
+          setContributions(payload.contributions ?? []);
+          setCanModerate(payload.canModerate === true);
+        }
       } catch {
         if (!ignore) setContributions([]);
       } finally {
@@ -1282,12 +1357,6 @@ export default function Home() {
               </span>
               <span><b>Use my location</b><small>{locationMessage}</small></span>
             </button>
-            <div className="map-legend" role="note" aria-label="Map colour key">
-              <span><i className="swatch surveyed" /> Surveyed</span>
-              <span><i className="swatch mapped" /> Mapped</span>
-              <span><i className="swatch reported" /> Reported</span>
-              <span><i className="swatch unknown" /> No info</span>
-            </div>
           </div>
 
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
@@ -1405,6 +1474,11 @@ export default function Home() {
                       <button type="button" onClick={openContribution}>＋ Add information</button>
                     </div>
                     <div className="community-warning">Community reports are unverified and shown separately from surveyed and OpenStreetMap information.</div>
+                    {canModerate && (
+                      <div className="moderator-note" role="note">
+                        <b>Demo moderation</b> Every signed-in account can remove a report. A real deployment would limit this to reviewers.
+                      </div>
+                    )}
                     {loadingContributions ? (
                       <p className="loading">Loading community reports…</p>
                     ) : contributions.length ? (
@@ -1429,6 +1503,60 @@ export default function Home() {
                               <p className="saved-coordinate">⌖ Pinned at {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</p>
                             )}
                             <small>Shared by {item.contributor} · {new Date(item.createdAt.replace(" ", "T") + "Z").toLocaleDateString()}</small>
+
+                            <div className="moderation-row">
+                              {(item.reportCount ?? 0) > 0 && (
+                                <span className="flag-count">Flagged by {item.reportCount} {item.reportCount === 1 ? "person" : "people"}</span>
+                              )}
+                              <button type="button" className="link-button" onClick={() => openReport(item.id)}>Report as inaccurate</button>
+                              {canModerate && (
+                                removingId === item.id ? (
+                                  <span className="remove-confirm">
+                                    Remove permanently?
+                                    <button type="button" className="danger-button" onClick={() => void removeContribution(item.id)}>Yes, remove</button>
+                                    <button type="button" className="link-button" onClick={() => setRemovingId(null)}>Keep</button>
+                                  </span>
+                                ) : (
+                                  <button type="button" className="link-button danger" onClick={() => { setRemovingId(item.id); setReportingId(null); setModerationError(""); }}>Remove</button>
+                                )
+                              )}
+                            </div>
+
+                            {reportingId === item.id && (
+                              <div className="report-form">
+                                <b>What is wrong with this detail?</b>
+                                <div className="reason-row" role="group" aria-label="Reason">
+                                  {REPORT_REASONS.map((reason) => (
+                                    <button
+                                      key={reason}
+                                      type="button"
+                                      className={reportReason === reason ? "reason active" : "reason"}
+                                      aria-pressed={reportReason === reason}
+                                      onClick={() => setReportReason(reason)}
+                                    >
+                                      {reason}
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  rows={2}
+                                  value={reportNote}
+                                  maxLength={400}
+                                  placeholder="Optional: what did you find instead?"
+                                  onChange={(e) => setReportNote(e.target.value)}
+                                />
+                                <div className="report-actions">
+                                  <button type="button" className="link-button" onClick={() => setReportingId(null)}>Cancel</button>
+                                  <button type="button" className="primary-action" disabled={reportState === "saving"} onClick={() => void submitReport(item.id)}>
+                                    {reportState === "saving" ? "Sending…" : "Send report"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {moderationError && (reportingId === item.id || removingId === item.id) && (
+                              <p className="form-error">{moderationError}</p>
+                            )}
                           </article>
                         ))}
                       </div>
@@ -1647,6 +1775,9 @@ export default function Home() {
                       <b><i className="facility-tag" style={{ "--pin": facilityFor(item.category).colour } as CSSProperties}><FacilityIcon facility={facilityFor(item.category)} size={13} /></i>{item.category}</b>
                       <span>{item.status === "pending_review" ? "Awaiting review" : item.status}</span>
                     </div>
+                    {(item.reportCount ?? 0) > 0 && (
+                      <p className="flag-notice">Flagged as inaccurate by {item.reportCount} {item.reportCount === 1 ? "person" : "people"} — worth checking.</p>
+                    )}
                     <strong>{item.buildingName ?? item.buildingId}</strong>
                     <p>{item.location} — {item.details}</p>
                     {item.photoUrl && <Image className="profile-photo" src={item.photoUrl} alt={`${item.category} accessibility photo`} width={240} height={164} unoptimized />}

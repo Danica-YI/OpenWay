@@ -51,3 +51,20 @@ export const accessibilityContributions = sqliteTable("accessibility_contributio
   index("contribution_building_idx").on(table.buildingId, table.createdAt),
   index("contribution_user_idx").on(table.userId, table.createdAt),
 ]);
+
+/**
+ * Someone saying a community report is wrong. Kept as rows rather than a
+ * counter on the contribution so a moderator can see why it was flagged, and
+ * how many separate people thought so, before removing anything.
+ */
+export const contributionReports = sqliteTable("contribution_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  contributionId: integer("contribution_id").notNull().references(() => accessibilityContributions.id),
+  /** Null while signed out — anyone can flag information that would mislead. */
+  userId: integer("user_id").references(() => users.id),
+  reason: text("reason").notNull(),
+  details: text("details"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+}, (table) => [
+  index("report_contribution_idx").on(table.contributionId),
+]);
