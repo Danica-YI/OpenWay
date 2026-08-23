@@ -17,11 +17,9 @@ export async function POST(request: Request) {
       : [];
     if (!ids.length) return Response.json({ counts: {} });
 
+    await ensureSchema();
     const db = await getDb();
     const rows = await db
-    await ensureSchema();
-
-    const rows = await getDb()
       .select({ buildingId: accessibilityContributions.buildingId, total: sql<number>`count(*)` })
       .from(accessibilityContributions)
       .where(inArray(accessibilityContributions.buildingId, ids))

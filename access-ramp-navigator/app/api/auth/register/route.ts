@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     }
 
     await ensureSchema();
-    const db = getDb();
+    const db = await getDb();
     const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
     if (existing.length) return Response.json({ error: "That email already has an account" }, { status: 409 });
 

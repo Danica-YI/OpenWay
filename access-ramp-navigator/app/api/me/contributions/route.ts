@@ -11,7 +11,8 @@ export async function GET(request: Request) {
     const user = await currentUser(request);
     if (!user) return Response.json({ error: "Sign in first" }, { status: 401 });
 
-    const contributions = await getDb()
+    const db = await getDb();
+    const contributions = await db
       .select({
         id: accessibilityContributions.id,
         buildingId: accessibilityContributions.buildingId,

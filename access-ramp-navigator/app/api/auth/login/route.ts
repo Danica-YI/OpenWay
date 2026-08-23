@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
 
     await ensureSchema();
-    const [account] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
+    const [account] = await (await getDb()).select().from(users).where(eq(users.email, email)).limit(1);
 
     // One message for both a missing account and a wrong password, so this
     // endpoint cannot be used to discover which emails are registered.

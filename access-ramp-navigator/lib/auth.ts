@@ -67,12 +67,12 @@ export function publicName(displayName: string): string {
 export async function createSession(userId: number): Promise<string> {
   const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
-  await getDb().insert(sessions).values({ token, userId, expiresAt });
+  await (await getDb()).insert(sessions).values({ token, userId, expiresAt });
   return token;
 }
 
 export async function destroySession(token: string): Promise<void> {
-  await getDb().delete(sessions).where(eq(sessions.token, token));
+  await (await getDb()).delete(sessions).where(eq(sessions.token, token));
 }
 
 export function readSessionToken(request: Request): string | null {
@@ -84,7 +84,7 @@ export function readSessionToken(request: Request): string | null {
 export async function currentUser(request: Request): Promise<SessionUser | null> {
   const token = readSessionToken(request);
   if (!token) return null;
-  const rows = await getDb()
+  const rows = await (await getDb())
     .select({ id: users.id, email: users.email, displayName: users.displayName })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))

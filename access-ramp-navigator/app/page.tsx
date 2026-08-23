@@ -196,11 +196,10 @@ export default function Home() {
     category: "Ramp",
     location: "",
     details: "",
-    contributor: "",
+    anonymous: false,
     latitude: null as number | null,
     longitude: null as number | null,
   });
-  const [form, setForm] = useState({ category: "Ramp", location: "", details: "", anonymous: false });
 
   // Derived, not stored: the viewport already tells us whether we are too far out.
   const needsZoom = viewport !== null && viewport.zoom < MIN_ZOOM;
@@ -311,8 +310,7 @@ export default function Home() {
   const openContribution = useCallback(() => {
     removeDraftPin();
     setPinMode(false);
-    setForm({ category: "Ramp", location: "", details: "", contributor: "", latitude: null, longitude: null });
-    setForm({ category: "Ramp", location: "", details: "", anonymous: false });
+    setForm({ category: "Ramp", location: "", details: "", anonymous: false, latitude: null, longitude: null });
     setSubmitState("idle");
     setFormError("");
     setContributionOpen(true);
@@ -363,15 +361,12 @@ export default function Home() {
       if (!active || !mapElement.current) return;
 
       const map = L.map(mapElement.current, { zoomControl: false, zoomSnap: 0.5 }).setView(DEFAULT_CENTER, 17);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-      const map = L.map(mapElement.current, { zoomControl: false }).setView(DEFAULT_CENTER, 17);
       // On a phone the bottom of the map belongs to the profile sheet, so the
       // zoom buttons join the locate button in a vertical stack on the right.
       L.control
         .zoom({ position: window.matchMedia("(max-width: 760px)").matches ? "topright" : "bottomright" })
         .addTo(map);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         maxZoom: 20,
         subdomains: "abcd",
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
@@ -1191,16 +1186,6 @@ export default function Home() {
                 </div>
                 <button type="button" onClick={startPinPlacement}>{form.latitude === null ? "Place pin on map" : "Adjust pin"}</button>
               </div>
-              <div className="form-row">
-                <label>Accessibility feature
-                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>
-                    <option>Lift</option><option>Parking</option><option>Door</option><option>Other</option>
-                  </select>
-                </label>
-                <label><span>Your name <small>(optional)</small></span>
-                  <input value={form.contributor} maxLength={60} onChange={(e) => setForm({ ...form, contributor: e.target.value })} placeholder="Community member" />
-                </label>
               <label>Accessibility feature
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   <option>Ramp</option><option>Accessible entrance</option><option>Accessible toilet</option>

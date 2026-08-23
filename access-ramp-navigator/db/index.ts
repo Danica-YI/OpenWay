@@ -34,7 +34,7 @@ export function ensureSchema(): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-  const d1 = getD1();
+  const d1 = await getD1();
   await d1.batch([
     d1.prepare(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
