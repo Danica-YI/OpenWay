@@ -112,7 +112,7 @@ export async function fetchOverpass(bbox: BBox): Promise<OverpassElement[]> {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           // Overpass asks that clients identify themselves.
-          "User-Agent": "AccessRampNavigator/0.1 (accessibility mapping prototype)",
+          "User-Agent": "OpenWay/0.1 (accessibility mapping prototype)",
         },
       });
       if (!response.ok) {

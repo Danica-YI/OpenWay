@@ -1,4 +1,4 @@
-# AccessRamp Navigator
+# OpenWay
 
 Detailed building accessibility information for every building on the map — not
 just the handful someone has surveyed.

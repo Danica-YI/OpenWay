@@ -709,9 +709,9 @@ export default function Home() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="AccessRamp home">
+        <a className="brand" href="#top" aria-label="OpenWay home">
           <span className="brand-mark">♿</span>
-          <span>Access<span>Ramp</span></span>
+          <span>Open<span>Way</span></span>
         </a>
         <div className="topbar-account">
           <AccountControls
@@ -1070,7 +1070,7 @@ export default function Home() {
           <section className="contribution-modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
             <div className="modal-header">
               <div>
-                <span className="detail-type">ACCESSRAMP ACCOUNT</span>
+                <span className="detail-type">OPENWAY ACCOUNT</span>
                 <h2 id="auth-title">{authMode === "signin" ? "Sign in" : "Create an account"}</h2>
                 <p>
                   {authMode === "signin"
@@ -1243,7 +1243,7 @@ function OsmSections({ building, onContribute, reportCount }: { building: MapBui
           {building.address ? ` and address (${building.address})` : ""}, but nothing about entrances, ramps, toilets or lifts.
         </p>
         <p className="gap-note">
-          This is exactly the gap AccessRamp exists to close. {reportCount > 0 ? `${reportCount} community report${reportCount > 1 ? "s" : ""} already added.` : "Be the first to add a detail."}
+          This is exactly the gap OpenWay exists to close. {reportCount > 0 ? `${reportCount} community report${reportCount > 1 ? "s" : ""} already added.` : "Be the first to add a detail."}
         </p>
         <button type="button" className="primary-action full" onClick={onContribute}>＋ Add the first detail</button>
       </section>
