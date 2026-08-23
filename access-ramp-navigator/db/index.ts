@@ -61,6 +61,12 @@ async function bootstrap(): Promise<void> {
       contributor TEXT NOT NULL DEFAULT 'Community member',
       latitude REAL,
       longitude REAL,
+      photo_key TEXT,
+      photo_content_type TEXT,
+      photo_latitude REAL,
+      photo_longitude REAL,
+      photo_accuracy REAL,
+      photo_captured_at TEXT,
       status TEXT NOT NULL DEFAULT 'pending_review',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
@@ -75,6 +81,12 @@ async function bootstrap(): Promise<void> {
     "ALTER TABLE accessibility_contributions ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE accessibility_contributions ADD COLUMN latitude REAL",
     "ALTER TABLE accessibility_contributions ADD COLUMN longitude REAL",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_key TEXT",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_content_type TEXT",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_latitude REAL",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_longitude REAL",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_accuracy REAL",
+    "ALTER TABLE accessibility_contributions ADD COLUMN photo_captured_at TEXT",
   ];
   for (const statement of additions) {
     try {

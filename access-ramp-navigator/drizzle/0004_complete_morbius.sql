@@ -1,0 +1,1 @@
+ALTER TABLE `accessibility_contributions` ADD `photo_accuracy` real;

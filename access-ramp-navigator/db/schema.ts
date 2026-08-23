@@ -39,6 +39,12 @@ export const accessibilityContributions = sqliteTable("accessibility_contributio
   contributor: text("contributor").notNull().default("Community member"),
   latitude: real("latitude"),
   longitude: real("longitude"),
+  photoKey: text("photo_key"),
+  photoContentType: text("photo_content_type"),
+  photoLatitude: real("photo_latitude"),
+  photoLongitude: real("photo_longitude"),
+  photoAccuracy: real("photo_accuracy"),
+  photoCapturedAt: text("photo_captured_at"),
   status: text("status").notNull().default("pending_review"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 }, (table) => [
