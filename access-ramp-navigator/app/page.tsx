@@ -713,9 +713,17 @@ export default function Home() {
           <span className="brand-mark">♿</span>
           <span>Access<span>Ramp</span></span>
         </a>
-        <div className="header-status">
-          <span className="status-dot" /> Every building, not just the mapped ones
+        <div className="topbar-account">
+          <AccountControls
+            account={account}
+            variant="bar"
+            onSignIn={() => openAuth("signin")}
+            onRegister={() => openAuth("register")}
+            onProfile={openProfile}
+            onSignOut={signOut}
+          />
         </div>
+
         <button className="report-button" type="button" onClick={openContribution} disabled={!selectedId}>
           <span aria-hidden="true">＋</span> {selectedId ? "Contribute accessibility info" : "Select a building first"}
         </button>
@@ -742,33 +750,15 @@ export default function Home() {
 
       <section className={`workspace${detailOpen && selected ? " detail-open" : ""}${menuOpen ? " menu-open" : ""}`} id="top">
         <aside className="sidebar" id="browse-panel" aria-label="Buildings in view">
-          <div className="account-block">
-            {account ? (
-              <>
-                <span className="account-avatar" aria-hidden="true">
-                  {account.displayName.trim().slice(0, 1).toUpperCase()}
-                </span>
-                <div className="account-copy">
-                  <strong>{account.displayName}</strong>
-                  <small>Shown publicly as {account.publicName}</small>
-                </div>
-                <div className="account-actions">
-                  <button type="button" onClick={openProfile}>My contributions</button>
-                  <button type="button" onClick={signOut}>Sign out</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="account-copy">
-                  <strong>Not signed in</strong>
-                  <small>Sign in to have your reports credited to you</small>
-                </div>
-                <div className="account-actions">
-                  <button type="button" onClick={() => openAuth("signin")}>Sign in</button>
-                  <button type="button" onClick={() => openAuth("register")}>Create account</button>
-                </div>
-              </>
-            )}
+          <div className="panel-account">
+            <AccountControls
+              account={account}
+              variant="panel"
+              onSignIn={() => openAuth("signin")}
+              onRegister={() => openAuth("register")}
+              onProfile={openProfile}
+              onSignOut={signOut}
+            />
           </div>
 
           <button className="panel-contribute" type="button" onClick={startContribution}>
@@ -1325,6 +1315,58 @@ function OsmSections({ building, onContribute, reportCount }: { building: MapBui
         <button type="button" className="primary-action full" onClick={onContribute}>＋ Add what you know</button>
       </section>
     </>
+  );
+}
+
+/**
+ * Account state lives in the header on wide screens and in the browse panel on
+ * phones, where the header has no room. One component, mounted twice, so the
+ * two never drift apart; CSS decides which one is on screen.
+ */
+function AccountControls({
+  account,
+  variant,
+  onSignIn,
+  onRegister,
+  onProfile,
+  onSignOut,
+}: {
+  account: Account | null;
+  variant: "bar" | "panel";
+  onSignIn: () => void;
+  onRegister: () => void;
+  onProfile: () => void;
+  onSignOut: () => void;
+}) {
+  if (!account) {
+    return (
+      <div className={`account-controls ${variant}`}>
+        {variant === "panel" && (
+          <div className="account-copy">
+            <strong>Not signed in</strong>
+            <small>Sign in to have your reports credited to you</small>
+          </div>
+        )}
+        <div className="account-actions">
+          <button type="button" onClick={onSignIn}>Sign in</button>
+          <button type="button" onClick={onRegister}>Create account</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`account-controls ${variant}`}>
+      <span className="account-avatar" aria-hidden="true">{account.displayName.trim().slice(0, 1).toUpperCase()}</span>
+      <div className="account-copy">
+        <strong>{variant === "bar" ? account.publicName : account.displayName}</strong>
+        {variant === "panel" && <small>Shown publicly as {account.publicName}</small>}
+      </div>
+      <div className="account-actions">
+        <button type="button" onClick={onProfile}>My contributions</button>
+        <button type="button" onClick={onSignOut}>Sign out</button>
+      </div>
+    </div>
   );
 }
 
