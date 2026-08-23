@@ -261,6 +261,11 @@ export default function Home() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loadingBuildings, setLoadingBuildings] = useState(false);
   const [buildingError, setBuildingError] = useState<string | null>(null);
+  /** Bumped by the retry control so the loader runs again without a pan. */
+  const [reloadToken, setReloadToken] = useState(0);
+  /** The server refused the area as too wide, which is not the same as the
+   *  zoom being too far out — padding can push a valid view over the limit. */
+  const [areaTooWide, setAreaTooWide] = useState(false);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -753,9 +758,12 @@ export default function Home() {
         const response = await fetch(`/api/buildings?bbox=${key}`);
         const payload = (await response.json()) as { buildings?: MapBuilding[]; error?: string; zoomIn?: boolean };
         if (payload.zoomIn) {
+          // Previously this emptied the map and said nothing at all.
           setBuildings([]);
+          setAreaTooWide(true);
           return;
         }
+        setAreaTooWide(false);
         if (!response.ok) throw new Error(payload.error ?? "Could not load buildings");
         const loaded = payload.buildings ?? [];
         requestCache.current.set(key, loaded);
@@ -769,7 +777,7 @@ export default function Home() {
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [viewport]);
+  }, [viewport, reloadToken]);
 
   // --- community report counts for the buildings on screen ----------------
   useEffect(() => {
@@ -1286,6 +1294,17 @@ export default function Home() {
     }
   }
 
+  /**
+   * Ask again for the area currently in view. Only successful loads are
+   * cached, so nothing has to be evicted first — the loader just needs a
+   * reason to run when the viewport has not changed.
+   */
+  function retryBuildings() {
+    loadedBBox.current = null;
+    setBuildingError(null);
+    setReloadToken((token) => token + 1);
+  }
+
   /** Take me back to my dot. */
   function locateUser() {
     const map = mapInstance.current;
@@ -1408,7 +1427,7 @@ export default function Home() {
           <div className="location-list">
             {loadingBuildings && !visible.length && <p className="loading">Loading buildings from OpenStreetMap…</p>}
 
-            {needsZoom && (
+            {(needsZoom || areaTooWide) && (
               <div className="empty-state">
                 <span aria-hidden="true">⌕</span>
                 <strong>Zoom in to load buildings</strong>
@@ -1416,12 +1435,23 @@ export default function Home() {
               </div>
             )}
 
-            {buildingError && (
+            {/* A failed refresh while footprints are still on screen is a very
+                different thing from having nothing to show, and saying "map
+                data unavailable" above a list of them is just wrong. */}
+            {buildingError && !visible.length && (
               <div className="empty-state">
                 <span aria-hidden="true">!</span>
                 <strong>Map data unavailable</strong>
                 <p>{buildingError}</p>
+                <button type="button" className="secondary-button" onClick={retryBuildings}>Try again</button>
               </div>
+            )}
+
+            {buildingError && visible.length > 0 && (
+              <p className="stale-notice">
+                Showing the last buildings that loaded — this area did not.{" "}
+                <button type="button" className="link-button" onClick={retryBuildings}>Try again</button>
+              </p>
             )}
 
             {visible.slice(0, 120).map(({ building, status, metres }) => (
@@ -1448,7 +1478,7 @@ export default function Home() {
               </button>
             ))}
 
-            {!loadingBuildings && !needsZoom && !buildingError && !visible.length && (
+            {!loadingBuildings && !needsZoom && !areaTooWide && !buildingError && !visible.length && (
               <div className="empty-state">
                 <span aria-hidden="true">⌕</span>
                 <strong>No matching buildings</strong>
@@ -1475,6 +1505,13 @@ export default function Home() {
           </div>
 
           {loadingBuildings && <div className="fetch-status" role="status">Loading buildings…</div>}
+          {!loadingBuildings && buildingError && (
+            // The sidebar carries the same message, but on a phone it is off
+            // screen behind the map, so the failure has to be visible here too.
+            <button type="button" className="fetch-status failed" onClick={retryBuildings}>
+              {buildings.length ? "This area did not load · Tap to retry" : "Buildings unavailable · Tap to retry"}
+            </button>
+          )}
 
           {pinMode && selected && (
             <section className="pin-placement-bar" aria-live="polite">
