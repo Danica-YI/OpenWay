@@ -45,6 +45,7 @@ provision — the local Cloudflare D1 database is created automatically under
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build |
 | `npm start` | Serve the production build |
+| `npm run deploy` | Build and deploy to Cloudflare Workers (see below) |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript, no emit |
 | `npm run db:generate` | Regenerate Drizzle migrations after editing `db/schema.ts` |
@@ -52,6 +53,33 @@ provision — the local Cloudflare D1 database is created automatically under
 The `sites:*` scripts are the hosting platform's Linux-only deploy pipeline.
 Do not run them locally on macOS or Windows — they need `flock`, `sha256sum` and
 GNU `timeout`.
+
+## Deploying
+
+The live app runs on Cloudflare Workers at <https://openway.danica-yi.workers.dev>.
+
+```bash
+npx wrangler login   # once per machine
+npm run deploy
+```
+
+`npm run deploy` builds the app, then `scripts/deploy.mjs` swaps the
+placeholder database in the generated `dist/server/wrangler.json` for the real
+resources in `deploy.json` and runs `wrangler deploy`. Extra arguments are
+passed through to wrangler, e.g. `npm run deploy -- --dry-run`.
+
+`deploy.json` holds the Worker name and the D1 database (ids are not secrets).
+The database tables are created by the app on first use, so a fresh database
+needs no migration step.
+
+**Deploying to another Cloudflare account:** verify the account's email and
+register a workers.dev subdomain in the dashboard, run
+`npx wrangler d1 create openway-db`, and put the printed `database_id` in
+`deploy.json`.
+
+**Photos:** uploads need an R2 bucket. `"r2"` is `null` until R2 is enabled in
+the Cloudflare dashboard; then run `npx wrangler r2 bucket create openway-photos`,
+set `"r2": { "bucket_name": "openway-photos" }` and deploy again.
 
 ## How it fits together
 

@@ -1,0 +1,8 @@
+{
+  "worker": "openway",
+  "d1": {
+    "database_name": "openway-db",
+    "database_id": "edf0be5d-4656-40c3-990b-db08108ded8b"
+  },
+  "r2": null
+}
